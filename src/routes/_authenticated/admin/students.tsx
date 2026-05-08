@@ -49,14 +49,20 @@ function AdminStudentsPage() {
   const { data: parents } = useQuery({
     queryKey: ["parent-profiles"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: roleRows, error: roleErr } = await supabase
         .from("user_roles")
-        .select("user_id, profiles!inner(id, full_name, email, status)")
+        .select("user_id")
         .eq("role", "parent");
+      if (roleErr) throw roleErr;
+      const ids = (roleRows ?? []).map((r) => r.user_id);
+      if (ids.length === 0) return [];
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, status")
+        .in("id", ids)
+        .eq("status", "approved");
       if (error) throw error;
-      return (data as { user_id: string; profiles: { id: string; full_name: string | null; email: string | null; status: string } }[])
-        .filter((r) => r.profiles?.status === "approved")
-        .map((r) => r.profiles);
+      return data as { id: string; full_name: string | null; email: string | null; status: string }[];
     },
   });
 
