@@ -124,7 +124,7 @@ export function dashboardPathForRole(role: AppRole | null): string {
     case "accountant":
       return "/accountant/fees";
     case "parent":
-      return "/parent/children";
+      return "/parent/dashboard";
     default:
       return "/pending";
   }
