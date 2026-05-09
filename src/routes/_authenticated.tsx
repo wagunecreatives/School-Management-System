@@ -13,7 +13,10 @@ const NAV: Record<AppRole, { label: string; to: string }[]> = {
   ],
   teacher: [{ label: "Results", to: "/teacher/results" }],
   accountant: [{ label: "Fees", to: "/accountant/fees" }],
-  parent: [{ label: "My children", to: "/parent/children" }],
+  parent: [
+    { label: "Dashboard", to: "/parent/dashboard" },
+    { label: "My children", to: "/parent/children" },
+  ],
 };
 
 function AuthenticatedLayout() {
