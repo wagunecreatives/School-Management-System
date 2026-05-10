@@ -53,6 +53,16 @@ interface ProfileRow {
 
 type InviteRole = "teacher" | "accountant" | "parent";
 
+const stablePreviewOrigin = "https://id-preview--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app";
+
+function inviteRedirectUrl() {
+  const origin = window.location.origin.includes("lovableproject.com")
+    ? stablePreviewOrigin
+    : window.location.origin;
+
+  return `${origin}/accept-invite`;
+}
+
 function AdminUsersPage() {
   const { roles } = useAuth();
   const role = primaryRole(roles);
@@ -127,7 +137,7 @@ function AdminUsersPage() {
           email: inviteEmail.trim().toLowerCase(),
           full_name: inviteName.trim() || null,
           role: inviteRole,
-          redirect_to: `${window.location.origin}/accept-invite`,
+          redirect_to: inviteRedirectUrl(),
         },
       });
       if (error) throw error;
