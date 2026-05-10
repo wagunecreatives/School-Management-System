@@ -1,5 +1,7 @@
 // Admin-only: invite a user by email and pre-assign their role.
 // User clicks the link in the email and sets their own password.
+// If the user already exists, we send a password-reset email instead so
+// they can still complete account setup via the same /accept-invite page.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -25,7 +27,6 @@ Deno.serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     if (!token) return json({ error: "Missing auth" }, 401);
 
-    // Verify caller is an admin using their JWT (RLS-respecting client)
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
@@ -52,14 +53,56 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // 1) Try to invite a brand-new user.
     const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { invited_role: role, full_name: fullName },
       redirectTo,
     });
-    if (inviteErr) return json({ error: inviteErr.message }, 400);
 
-    return json({ ok: true, user_id: invited.user?.id });
+    if (!inviteErr) {
+      return json({ ok: true, mode: "invited", user_id: invited.user?.id });
+    }
+
+    const msg = (inviteErr.message ?? "").toLowerCase();
+    const alreadyExists =
+      msg.includes("already") || msg.includes("registered") || msg.includes("exists");
+
+    if (!alreadyExists) {
+      console.error("inviteUserByEmail failed:", inviteErr.message);
+      return json({ error: inviteErr.message }, 400);
+    }
+
+    // 2) User exists → look them up, ensure their role/profile, then send a recovery link.
+    const { data: list, error: listErr } = await admin.auth.admin.listUsers({
+      page: 1,
+      perPage: 200,
+    });
+    if (listErr) return json({ error: listErr.message }, 400);
+
+    const existing = list.users.find((u) => (u.email ?? "").toLowerCase() === email);
+    if (!existing) return json({ error: "User exists but could not be located" }, 400);
+
+    // Make sure profile is approved and role is assigned.
+    await admin
+      .from("profiles")
+      .update({ status: "approved", full_name: fullName ?? undefined })
+      .eq("id", existing.id);
+
+    await admin.from("user_roles").delete().eq("user_id", existing.id);
+    await admin.from("user_roles").insert({ user_id: existing.id, role });
+
+    // Send a password-reset email. accept-invite handles the recovery session.
+    const { error: resetErr } = await userClient.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    if (resetErr) {
+      console.error("resetPasswordForEmail failed:", resetErr.message);
+      return json({ error: resetErr.message }, 400);
+    }
+
+    return json({ ok: true, mode: "reset", user_id: existing.id });
   } catch (e) {
+    console.error("invite-user error:", e);
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
