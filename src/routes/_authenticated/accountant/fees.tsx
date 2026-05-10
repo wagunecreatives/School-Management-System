@@ -21,12 +21,56 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from "recharts";
 
 export const Route = createFileRoute("/_authenticated/accountant/fees")({
   component: AccountantFeesPage,
 });
+
+type StudentRow = {
+  id: string;
+  full_name: string;
+  admission_no: string | null;
+  class_id: string | null;
+  classes: { id: string; name: string } | null;
+};
+
+type InvoiceRow = {
+  id: string;
+  term: string;
+  amount: number;
+  due_date: string | null;
+  status: string;
+  student_id: string;
+  students: { full_name: string; class_id: string | null; classes: { name: string } | null } | null;
+  fee_payments: { amount: number }[];
+};
+
+type PaymentRow = {
+  id: string;
+  amount: number;
+  paid_on: string;
+  method: string | null;
+  receipt_no: string | null;
+  fee_invoices: { term: string; students: { full_name: string } | null } | null;
+};
+
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 function AccountantFeesPage() {
   const { roles, user } = useAuth();
@@ -43,15 +87,23 @@ function AccountantFeesPage() {
   const [method, setMethod] = useState("Cash");
   const [receiptNo, setReceiptNo] = useState("");
 
+  const [uploading, setUploading] = useState(false);
+  const [uploadReport, setUploadReport] = useState<{
+    matched: number;
+    unmatched: { row: number; identifier: string }[];
+    invoicesCreated: number;
+    paymentsRecorded: number;
+  } | null>(null);
+
   const { data: students } = useQuery({
     queryKey: ["a-students"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("students")
-        .select("id, full_name, classes(name)")
+        .select("id, full_name, admission_no, class_id, classes(id, name)")
         .order("full_name");
       if (error) throw error;
-      return data as { id: string; full_name: string; classes: { name: string } | null }[];
+      return data as StudentRow[];
     },
   });
 
@@ -61,19 +113,11 @@ function AccountantFeesPage() {
       const { data, error } = await supabase
         .from("fee_invoices")
         .select(
-          "id, term, amount, due_date, status, students(full_name), fee_payments(amount)",
+          "id, term, amount, due_date, status, student_id, students(full_name, class_id, classes(name)), fee_payments(amount)",
         )
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as Array<{
-        id: string;
-        term: string;
-        amount: number;
-        due_date: string | null;
-        status: string;
-        students: { full_name: string } | null;
-        fee_payments: { amount: number }[];
-      }>;
+      return data as InvoiceRow[];
     },
   });
 
@@ -86,16 +130,9 @@ function AccountantFeesPage() {
           "id, amount, paid_on, method, receipt_no, fee_invoices(term, students(full_name))",
         )
         .order("paid_on", { ascending: false })
-        .limit(50);
+        .limit(100);
       if (error) throw error;
-      return data as Array<{
-        id: string;
-        amount: number;
-        paid_on: string;
-        method: string | null;
-        receipt_no: string | null;
-        fee_invoices: { term: string; students: { full_name: string } | null } | null;
-      }>;
+      return data as PaymentRow[];
     },
   });
 
@@ -130,7 +167,6 @@ function AccountantFeesPage() {
         recorded_by: user?.id,
       });
       if (error) throw error;
-      // optionally update invoice status
       const inv = invoices?.find((i) => i.id === payInvoiceId);
       if (inv) {
         const paid = inv.fee_payments.reduce((s, p) => s + Number(p.amount), 0) + Number(payAmount);
@@ -148,6 +184,37 @@ function AccountantFeesPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Per-class analytics
+  const classAnalytics = useMemo(() => {
+    if (!invoices) return [];
+    const map = new Map<string, { className: string; billed: number; collected: number }>();
+    for (const inv of invoices) {
+      const className = inv.students?.classes?.name ?? "Unassigned";
+      const key = className;
+      const paid = inv.fee_payments.reduce((s, p) => s + Number(p.amount), 0);
+      const cur = map.get(key) ?? { className, billed: 0, collected: 0 };
+      cur.billed += Number(inv.amount);
+      cur.collected += paid;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).map((c) => ({
+      ...c,
+      outstanding: Math.max(0, c.billed - c.collected),
+      rate: c.billed > 0 ? Math.round((c.collected / c.billed) * 100) : 0,
+    }));
+  }, [invoices]);
+
+  const totals = useMemo(() => {
+    const billed = classAnalytics.reduce((s, c) => s + c.billed, 0);
+    const collected = classAnalytics.reduce((s, c) => s + c.collected, 0);
+    return {
+      billed,
+      collected,
+      outstanding: Math.max(0, billed - collected),
+      rate: billed > 0 ? Math.round((collected / billed) * 100) : 0,
+    };
+  }, [classAnalytics]);
 
   if (role !== "accountant" && role !== "admin")
     return <Navigate to={dashboardPathForRole(role)} />;
@@ -170,12 +237,144 @@ function AccountantFeesPage() {
     recordPayment.mutate();
   };
 
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["admission_no", "full_name", "term", "amount", "due_date", "paid_amount", "method", "receipt_no"],
+      ["ADM001", "Jane Doe", "First Term", 50000, "2026-09-30", 20000, "Cash", "RCP-001"],
+      ["", "John Smith", "First Term", 50000, "2026-09-30", 50000, "Bank Transfer", "RCP-002"],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Fees");
+    XLSX.writeFile(wb, "fees-template.xlsx");
+  };
+
+  const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!students) {
+      toast.error("Students still loading, try again");
+      return;
+    }
+    setUploading(true);
+    setUploadReport(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+
+      // Build matching indexes
+      const byAdm = new Map<string, StudentRow>();
+      const byName = new Map<string, StudentRow>();
+      for (const s of students) {
+        if (s.admission_no) byAdm.set(norm(s.admission_no), s);
+        byName.set(norm(s.full_name), s);
+      }
+
+      const unmatched: { row: number; identifier: string }[] = [];
+      let matched = 0;
+      let invoicesCreated = 0;
+      let paymentsRecorded = 0;
+
+      for (let idx = 0; idx < rows.length; idx++) {
+        const r = rows[idx];
+        const adm = String(r.admission_no ?? "").trim();
+        const name = String(r.full_name ?? "").trim();
+        const rowTerm = String(r.term ?? "First Term").trim() || "First Term";
+        const amt = Number(r.amount ?? 0);
+        const due = String(r.due_date ?? "").trim() || null;
+        const paid = Number(r.paid_amount ?? 0);
+        const meth = String(r.method ?? "").trim() || null;
+        const rcpt = String(r.receipt_no ?? "").trim() || null;
+
+        if (!amt && !paid) continue;
+
+        const student =
+          (adm && byAdm.get(norm(adm))) ||
+          (name && byName.get(norm(name))) ||
+          null;
+
+        if (!student) {
+          unmatched.push({ row: idx + 2, identifier: adm || name || "—" });
+          continue;
+        }
+        matched++;
+
+        // Find or create invoice for this student/term
+        const { data: existing } = await supabase
+          .from("fee_invoices")
+          .select("id, amount, fee_payments(amount)")
+          .eq("student_id", student.id)
+          .eq("term", rowTerm)
+          .maybeSingle();
+
+        let invoiceId = existing?.id as string | undefined;
+        let invoiceAmount = Number(existing?.amount ?? amt);
+
+        if (!invoiceId) {
+          const { data: created, error: ie } = await supabase
+            .from("fee_invoices")
+            .insert({
+              student_id: student.id,
+              term: rowTerm,
+              amount: amt || 0,
+              due_date: due,
+              created_by: user?.id,
+            })
+            .select("id, amount")
+            .single();
+          if (ie) throw ie;
+          invoiceId = created!.id;
+          invoiceAmount = Number(created!.amount);
+          invoicesCreated++;
+        } else if (amt && Number(existing?.amount) !== amt) {
+          await supabase.from("fee_invoices").update({ amount: amt }).eq("id", invoiceId);
+          invoiceAmount = amt;
+        }
+
+        if (paid > 0 && invoiceId) {
+          const { error: pe } = await supabase.from("fee_payments").insert({
+            invoice_id: invoiceId,
+            amount: paid,
+            method: meth,
+            receipt_no: rcpt,
+            recorded_by: user?.id,
+          });
+          if (pe) throw pe;
+          paymentsRecorded++;
+
+          const prevPaid = (existing?.fee_payments ?? []).reduce(
+            (s: number, p: { amount: number }) => s + Number(p.amount),
+            0,
+          );
+          const totalPaid = prevPaid + paid;
+          const newStatus = totalPaid >= invoiceAmount ? "paid" : "partial";
+          await supabase.from("fee_invoices").update({ status: newStatus }).eq("id", invoiceId);
+        }
+      }
+
+      setUploadReport({ matched, unmatched, invoicesCreated, paymentsRecorded });
+      toast.success(
+        `Processed ${matched} rows. ${invoicesCreated} invoices, ${paymentsRecorded} payments.`,
+      );
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const PIE_COLORS = ["hsl(var(--primary))", "hsl(var(--muted-foreground))"];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-serif text-2xl font-bold text-foreground">Fees</h1>
         <p className="text-sm text-muted-foreground">
-          Issue invoices and record payments.
+          Issue invoices, record payments, bulk-import from Excel, and review collection analytics.
         </p>
       </div>
 
@@ -183,6 +382,8 @@ function AccountantFeesPage() {
         <TabsList>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="upload">Upload</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="invoices" className="space-y-4">
@@ -245,6 +446,7 @@ function AccountantFeesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Student</TableHead>
+                  <TableHead>Class</TableHead>
                   <TableHead>Term</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Paid</TableHead>
@@ -260,6 +462,7 @@ function AccountantFeesPage() {
                   return (
                     <TableRow key={i.id}>
                       <TableCell className="font-medium">{i.students?.full_name}</TableCell>
+                      <TableCell>{i.students?.classes?.name ?? "—"}</TableCell>
                       <TableCell>{i.term}</TableCell>
                       <TableCell>₦{Number(i.amount).toLocaleString()}</TableCell>
                       <TableCell>₦{paid.toLocaleString()}</TableCell>
@@ -271,7 +474,7 @@ function AccountantFeesPage() {
                 })}
                 {invoices?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground">
                       No invoices yet
                     </TableCell>
                   </TableRow>
@@ -376,7 +579,178 @@ function AccountantFeesPage() {
             </Table>
           </div>
         </TabsContent>
+
+        <TabsContent value="upload" className="space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-6">
+            <div>
+              <h2 className="font-serif text-lg font-semibold text-foreground">Bulk import</h2>
+              <p className="text-sm text-muted-foreground">
+                Upload an Excel file with columns:{" "}
+                <code className="rounded bg-muted px-1 text-xs">
+                  admission_no, full_name, term, amount, due_date, paid_amount, method, receipt_no
+                </code>
+                . Students are auto-matched by admission number, then by full name.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="button" variant="outline" onClick={downloadTemplate}>
+                Download template
+              </Button>
+              <label className="inline-flex">
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={onUpload}
+                  disabled={uploading}
+                />
+                <span className="inline-flex h-9 cursor-pointer items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90">
+                  {uploading ? "Processing..." : "Upload Excel"}
+                </span>
+              </label>
+            </div>
+
+            {uploadReport && (
+              <div className="space-y-3 rounded-lg border border-border bg-background p-4 text-sm">
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Stat label="Matched rows" value={uploadReport.matched} />
+                  <Stat label="Invoices created" value={uploadReport.invoicesCreated} />
+                  <Stat label="Payments recorded" value={uploadReport.paymentsRecorded} />
+                  <Stat label="Unmatched" value={uploadReport.unmatched.length} />
+                </div>
+                {uploadReport.unmatched.length > 0 && (
+                  <div>
+                    <p className="font-medium text-foreground">Unmatched rows</p>
+                    <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                      {uploadReport.unmatched.slice(0, 10).map((u) => (
+                        <li key={u.row}>
+                          Row {u.row}: {u.identifier}
+                        </li>
+                      ))}
+                      {uploadReport.unmatched.length > 10 && (
+                        <li>...and {uploadReport.unmatched.length - 10} more</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Total billed" value={`₦${totals.billed.toLocaleString()}`} />
+            <Stat label="Total collected" value={`₦${totals.collected.toLocaleString()}`} />
+            <Stat label="Outstanding" value={`₦${totals.outstanding.toLocaleString()}`} />
+            <Stat label="Collection rate" value={`${totals.rate}%`} />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h3 className="mb-4 font-serif text-base font-semibold text-foreground">
+                Overall collection
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Collected", value: totals.collected },
+                        { name: "Outstanding", value: totals.outstanding },
+                      ]}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={2}
+                    >
+                      {[0, 1].map((i) => (
+                        <Cell key={i} fill={PIE_COLORS[i]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number) => `₦${Number(v).toLocaleString()}`}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-6">
+              <h3 className="mb-4 font-serif text-base font-semibold text-foreground">
+                Per class
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={classAnalytics}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="className" stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
+                    <Tooltip
+                      formatter={(v: number) => `₦${Number(v).toLocaleString()}`}
+                      contentStyle={{
+                        background: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 8,
+                      }}
+                    />
+                    <Legend />
+                    <Bar dataKey="collected" fill="hsl(var(--primary))" name="Collected" />
+                    <Bar
+                      dataKey="outstanding"
+                      fill="hsl(var(--muted-foreground))"
+                      name="Outstanding"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Class</TableHead>
+                  <TableHead>Billed</TableHead>
+                  <TableHead>Collected</TableHead>
+                  <TableHead>Outstanding</TableHead>
+                  <TableHead>Rate</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {classAnalytics.map((c) => (
+                  <TableRow key={c.className}>
+                    <TableCell className="font-medium">{c.className}</TableCell>
+                    <TableCell>₦{c.billed.toLocaleString()}</TableCell>
+                    <TableCell>₦{c.collected.toLocaleString()}</TableCell>
+                    <TableCell>₦{c.outstanding.toLocaleString()}</TableCell>
+                    <TableCell>{c.rate}%</TableCell>
+                  </TableRow>
+                ))}
+                {classAnalytics.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      No data yet
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-1 font-serif text-xl font-bold text-foreground">{value}</p>
     </div>
   );
 }
