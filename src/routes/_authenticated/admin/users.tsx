@@ -342,6 +342,18 @@ function AdminUsersPage() {
                     >
                       Save role
                     </Button>
+                    {p.email && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={resendInvite.isPending}
+                        onClick={() =>
+                          resendInvite.mutate({ email: p.email!, userId: p.id })
+                        }
+                      >
+                        Resend invite
+                      </Button>
+                    )}
                     {p.status !== "approved" && (
                       <Button
                         size="sm"
