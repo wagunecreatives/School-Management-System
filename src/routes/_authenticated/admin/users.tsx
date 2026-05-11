@@ -53,21 +53,18 @@ interface ProfileRow {
 
 type InviteRole = "teacher" | "accountant" | "parent";
 
-const stablePreviewOrigin = "https://id-preview--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app";
+const publishedAppOrigin = "https://project--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app";
 
 function inviteRedirectUrl() {
-  // Always use a stable app origin so invite emails open the system
-  // (not the Lovable editor / dashboard). Only trust the current origin
-  // when it's clearly the published app.
+  // Preview links are protected by Lovable's editor bridge, so email invite
+  // links must use the public published app URL or a custom domain.
   const here = window.location.origin;
-  const isAppOrigin =
-    here.includes("id-preview--") ||
-    here.includes("project--") ||
-    (!here.includes("lovable.app") &&
-      !here.includes("lovable.dev") &&
-      !here.includes("lovableproject.com"));
+  const isCustomDomain =
+    !here.includes("lovable.app") &&
+    !here.includes("lovable.dev") &&
+    !here.includes("lovableproject.com");
 
-  const origin = isAppOrigin ? here : stablePreviewOrigin;
+  const origin = isCustomDomain ? here : publishedAppOrigin;
   return `${origin}/accept-invite`;
 }
 
