@@ -18,6 +18,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
+import { generateFeeStatementPdf, generateResultReportPdf } from "@/lib/pdf";
 
 export const Route = createFileRoute("/_authenticated/parent/students/$studentId")({
   component: StudentProfilePage,
@@ -88,6 +91,57 @@ function StudentProfilePage() {
             {data.classes?.name ?? "Unassigned class"}
             {data.admission_no ? ` • Admission ${data.admission_no}` : ""}
           </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              generateFeeStatementPdf({
+                studentName: data.full_name,
+                className: data.classes?.name,
+                admissionNo: data.admission_no ?? undefined,
+                invoices: data.fee_invoices.map((i) => ({
+                  term: i.term,
+                  amount: Number(i.amount),
+                  due_date: i.due_date,
+                  status: i.status,
+                  paid: i.fee_payments.reduce((s, p) => s + Number(p.amount), 0),
+                })),
+                payments: data.fee_invoices.flatMap((i) =>
+                  i.fee_payments.map((p) => ({
+                    paid_on: p.paid_on,
+                    amount: Number(p.amount),
+                    method: p.method,
+                    receipt_no: p.receipt_no,
+                    term: i.term,
+                  })),
+                ),
+              })
+            }
+          >
+            <Download /> Fee statement
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              generateResultReportPdf({
+                studentName: data.full_name,
+                className: data.classes?.name,
+                admissionNo: data.admission_no ?? undefined,
+                results: data.results.map((r) => ({
+                  term: r.term,
+                  subject: r.subjects?.name ?? "—",
+                  score: Number(r.score),
+                  grade: r.grade,
+                  remarks: r.remarks,
+                })),
+              })
+            }
+          >
+            <Download /> Result report
+          </Button>
         </div>
       </div>
 
