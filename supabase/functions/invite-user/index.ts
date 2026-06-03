@@ -91,13 +91,16 @@ Deno.serve(async (req) => {
     await admin.from("user_roles").delete().eq("user_id", existing.id);
     await admin.from("user_roles").insert({ user_id: existing.id, role });
 
-    // Send a password-reset email. accept-invite handles the recovery session.
-    const { error: resetErr } = await userClient.auth.resetPasswordForEmail(email, {
-      redirectTo,
+    // Use admin generateLink for recovery — not subject to the public
+    // resetPasswordForEmail per-email cooldown (35s) that was failing here.
+    const { error: linkErr } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: { redirectTo },
     });
-    if (resetErr) {
-      console.error("resetPasswordForEmail failed:", resetErr.message);
-      return json({ error: resetErr.message }, 400);
+    if (linkErr) {
+      console.error("generateLink(recovery) failed:", linkErr.message);
+      return json({ error: linkErr.message }, 400);
     }
 
     return json({ ok: true, mode: "reset", user_id: existing.id });
