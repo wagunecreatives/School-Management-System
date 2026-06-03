@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
         ok: true,
         mode: "invited",
         user_id: invited.user?.id,
-        action_link: withRedirect(linkData?.properties?.action_link, redirectTo),
+        action_link: activationLink(linkData?.properties, redirectTo, "invite"),
       });
     }
 
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
       ok: true,
       mode: "reset",
       user_id: existing.id,
-      action_link: withRedirect(linkData?.properties?.action_link, redirectTo),
+      action_link: activationLink(linkData?.properties, redirectTo, "recovery"),
     });
   } catch (e) {
     console.error("invite-user error:", e);
@@ -136,7 +136,23 @@ function json(b: unknown, status = 200) {
   });
 }
 
-function withRedirect(actionLink: string | null | undefined, redirectTo?: string) {
+function activationLink(
+  properties: Record<string, unknown> | undefined,
+  redirectTo: string | undefined,
+  type: "invite" | "recovery",
+) {
+  const hashedToken = typeof properties?.hashed_token === "string" ? properties.hashed_token : null;
+  if (redirectTo && hashedToken) {
+    const url = new URL(redirectTo);
+    url.searchParams.set("token_hash", hashedToken);
+    url.searchParams.set("type", type);
+    return url.toString();
+  }
+  const actionLink = typeof properties?.action_link === "string" ? properties.action_link : null;
+  return withRedirect(actionLink, redirectTo);
+}
+
+function withRedirect(actionLink: string | null, redirectTo?: string) {
   if (!actionLink) return null;
   if (!redirectTo) return actionLink;
   try {
