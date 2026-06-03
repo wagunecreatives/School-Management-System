@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { dashboardPathForRole, primaryRole, useAuth } from "@/lib/auth";
+import { dashboardPathForRole, primaryRole, useAuth, type AppRole } from "@/lib/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/accept-invite")({
 
 function AcceptInvitePage() {
   const navigate = useNavigate();
-  const { refresh, roles } = useAuth();
+  const { refresh } = useAuth();
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [password, setPassword] = useState("");
