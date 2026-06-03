@@ -146,10 +146,22 @@ function AdminUsersPage() {
         },
       });
       if (error) throw error;
-      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+      const payload = data as { error?: string; action_link?: string | null };
+      if (payload?.error) throw new Error(payload.error);
+      return payload?.action_link ?? null;
     },
-    onSuccess: () => {
+    onSuccess: async (actionLink) => {
       toast.success(`Invitation sent to ${inviteEmail}`);
+      if (actionLink) {
+        try {
+          await navigator.clipboard.writeText(actionLink);
+          toast.message("Invite link copied to clipboard", {
+            description: "Share manually if the email doesn't arrive.",
+          });
+        } catch {
+          // ignore clipboard failures
+        }
+      }
       setInviteEmail("");
       setInviteName("");
       qc.invalidateQueries({ queryKey: ["admin-profiles"] });
@@ -175,11 +187,27 @@ function AdminUsersPage() {
         },
       });
       if (error) throw error;
-      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+      const payload = data as { error?: string; action_link?: string | null };
+      if (payload?.error) throw new Error(payload.error);
+      return payload?.action_link ?? null;
     },
-    onSuccess: (_d, vars) => toast.success(`Invitation resent to ${vars.email}`),
+    onSuccess: async (actionLink, vars) => {
+      toast.success(`Invitation resent to ${vars.email}`);
+      if (actionLink) {
+        try {
+          await navigator.clipboard.writeText(actionLink);
+          toast.message("Invite link copied to clipboard", {
+            description: "Share manually if the email doesn't arrive.",
+          });
+        } catch {
+          // ignore
+        }
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   });
+
+
 
   const updateEmail = useMutation({
     mutationFn: async () => {

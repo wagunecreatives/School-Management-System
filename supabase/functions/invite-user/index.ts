@@ -53,14 +53,27 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 1) Try to invite a brand-new user.
+    // 1) Try to invite a brand-new user. inviteUserByEmail both creates the
+    //    user AND sends an invite email via the project's SMTP.
     const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { invited_role: role, full_name: fullName },
       redirectTo,
     });
 
     if (!inviteErr) {
-      return json({ ok: true, mode: "invited", user_id: invited.user?.id });
+      // Also generate a recovery link as a manual fallback in case SMTP isn't
+      // configured / the default Supabase SMTP silently drops external recipients.
+      const { data: linkData } = await admin.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: { redirectTo, data: { invited_role: role, full_name: fullName } },
+      });
+      return json({
+        ok: true,
+        mode: "invited",
+        user_id: invited.user?.id,
+        action_link: linkData?.properties?.action_link ?? null,
+      });
     }
 
     const msg = (inviteErr.message ?? "").toLowerCase();
@@ -91,9 +104,10 @@ Deno.serve(async (req) => {
     await admin.from("user_roles").delete().eq("user_id", existing.id);
     await admin.from("user_roles").insert({ user_id: existing.id, role });
 
-    // Use admin generateLink for recovery — not subject to the public
-    // resetPasswordForEmail per-email cooldown (35s) that was failing here.
-    const { error: linkErr } = await admin.auth.admin.generateLink({
+    // generateLink(recovery) returns the action_link AND triggers the SMTP
+    // delivery on Supabase's side. We surface the link so the admin can copy
+    // and share it manually if the email never lands (e.g. default SMTP).
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
       type: "recovery",
       email,
       options: { redirectTo },
@@ -103,7 +117,12 @@ Deno.serve(async (req) => {
       return json({ error: linkErr.message }, 400);
     }
 
-    return json({ ok: true, mode: "reset", user_id: existing.id });
+    return json({
+      ok: true,
+      mode: "reset",
+      user_id: existing.id,
+      action_link: linkData?.properties?.action_link ?? null,
+    });
   } catch (e) {
     console.error("invite-user error:", e);
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
