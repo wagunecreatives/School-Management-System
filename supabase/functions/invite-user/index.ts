@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
         ok: true,
         mode: "invited",
         user_id: invited.user?.id,
-        action_link: linkData?.properties?.action_link ?? null,
+        action_link: withRedirect(linkData?.properties?.action_link, redirectTo),
       });
     }
 
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
       ok: true,
       mode: "reset",
       user_id: existing.id,
-      action_link: linkData?.properties?.action_link ?? null,
+      action_link: withRedirect(linkData?.properties?.action_link, redirectTo),
     });
   } catch (e) {
     console.error("invite-user error:", e);
@@ -134,4 +134,16 @@ function json(b: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json", ...corsHeaders },
   });
+}
+
+function withRedirect(actionLink: string | null | undefined, redirectTo?: string) {
+  if (!actionLink) return null;
+  if (!redirectTo) return actionLink;
+  try {
+    const url = new URL(actionLink);
+    url.searchParams.set("redirect_to", redirectTo);
+    return url.toString();
+  } catch {
+    return actionLink;
+  }
 }
