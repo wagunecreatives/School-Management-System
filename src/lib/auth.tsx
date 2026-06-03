@@ -59,15 +59,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // defer DB calls to avoid deadlock
       setSession(s);
       if (s?.user) {
+        setLoading(true);
         setTimeout(() => {
           loadProfileAndRoles(s.user.id).then(({ profile, roles }) => {
             setProfile(profile);
             setRoles(roles);
+            setLoading(false);
           });
         }, 0);
       } else {
         setProfile(null);
         setRoles([]);
+        setLoading(false);
       }
     });
     supabase.auth.getSession().then(({ data }) => hydrate(data.session));
