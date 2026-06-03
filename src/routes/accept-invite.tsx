@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { dashboardPathForRole, primaryRole, useAuth, type AppRole } from "@/lib/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/accept-invite")({
 
 function AcceptInvitePage() {
   const navigate = useNavigate();
+  const { refresh } = useAuth();
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [password, setPassword] = useState("");
@@ -21,17 +23,26 @@ function AcceptInvitePage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // The invite/recovery link returns an access_token in the URL hash;
-    // supabase-js parses it automatically and creates a session.
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user) {
-        setEmail(data.session.user.email ?? null);
-        setFullName(
-          (data.session.user.user_metadata?.full_name as string | undefined) ?? "",
-        );
+    const restoreInviteSession = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const tokenHash = params.get("token_hash");
+      const type = params.get("type");
+
+      if (tokenHash && (type === "invite" || type === "recovery")) {
+        const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+        if (error) setError(error.message);
+      }
+
+      const { data } = await supabase.auth.getSession();
+      const user = data.session?.user;
+      if (user) {
+        setEmail(user.email ?? null);
+        setFullName((user.user_metadata?.full_name as string | undefined) ?? "");
       }
       setReady(true);
-    });
+    };
+
+    restoreInviteSession();
   }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -46,7 +57,14 @@ function AcceptInvitePage() {
     });
     setLoading(false);
     if (error) return setError(error.message);
-    navigate({ to: "/" });
+    await refresh();
+    const { data: userData } = await supabase.auth.getUser();
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userData.user?.id ?? "");
+    const nextRole = primaryRole((data ?? []).map((row) => row.role) as AppRole[]);
+    navigate({ to: dashboardPathForRole(nextRole) as "/" });
   };
 
   if (!ready) {
