@@ -53,7 +53,7 @@ interface ProfileRow {
 
 type InviteRole = "teacher" | "accountant" | "parent";
 
-const publicAppOrigin = "https://project--f2dabbb8-33eb-4322-9432-e691fdfbc4f6-dev.lovable.app";
+const publicAppOrigin = "https://project--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app";
 
 function inviteRedirectUrl() {
   // Preview links are protected by Lovable's editor bridge, so email invite
