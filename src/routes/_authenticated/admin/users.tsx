@@ -208,28 +208,6 @@ function AdminUsersPage() {
   });
 
 
-  const resendInvite = useMutation({
-    mutationFn: async ({ email, userId }: { email: string; userId: string }) => {
-      const userRoles = rolesMap?.[userId] ?? [];
-      const r = userRoles[0];
-      const inviteRole: InviteRole = (["teacher", "accountant", "parent"] as const).includes(
-        r as InviteRole,
-      )
-        ? (r as InviteRole)
-        : "parent";
-      const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: {
-          email: email.trim().toLowerCase(),
-          role: inviteRole,
-          redirect_to: inviteRedirectUrl(),
-        },
-      });
-      if (error) throw error;
-      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
-    },
-    onSuccess: (_d, vars) => toast.success(`Invitation resent to ${vars.email}`),
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   const updateEmail = useMutation({
     mutationFn: async () => {
