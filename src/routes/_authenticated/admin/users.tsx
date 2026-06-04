@@ -53,19 +53,11 @@ interface ProfileRow {
 
 type InviteRole = "teacher" | "accountant" | "parent";
 
-const publicAppOrigin = "https://project--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app";
-
-function inviteRedirectUrl() {
-  // Preview links are protected by Lovable's editor bridge, so email invite
-  // links must use the public published app URL or a custom domain.
-  const here = window.location.origin;
-  const isCustomDomain =
-    !here.includes("lovable.app") &&
-    !here.includes("lovable.dev") &&
-    !here.includes("lovableproject.com");
-
-  const origin = isCustomDomain ? here : publicAppOrigin;
-  return `${origin}/accept-invite`;
+interface Credentials {
+  email: string;
+  password: string;
+  mode: "created" | "reset";
+  full_name?: string | null;
 }
 
 function AdminUsersPage() {
@@ -74,10 +66,14 @@ function AdminUsersPage() {
   const qc = useQueryClient();
   const [pendingRole, setPendingRole] = useState<Record<string, AppRole>>({});
 
-  // Invite form
+  // Create-user form
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteRole, setInviteRole] = useState<InviteRole>("teacher");
+  const [invitePassword, setInvitePassword] = useState("");
+
+  // Credentials dialog (shown after create / reset)
+  const [credentials, setCredentials] = useState<Credentials | null>(null);
 
   // Edit-email dialog
   const [editing, setEditing] = useState<ProfileRow | null>(null);
@@ -135,46 +131,57 @@ function AdminUsersPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const inviteUser = useMutation({
+  const createUser = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke("invite-user", {
         body: {
           email: inviteEmail.trim().toLowerCase(),
           full_name: inviteName.trim() || null,
           role: inviteRole,
-          redirect_to: inviteRedirectUrl(),
+          password: invitePassword.trim() || undefined,
         },
       });
       if (error) throw error;
-      const payload = data as { error?: string; action_link?: string | null };
+      const payload = data as {
+        error?: string;
+        email?: string;
+        password?: string;
+        mode?: "created" | "reset";
+      };
       if (payload?.error) throw new Error(payload.error);
-      return payload?.action_link ?? null;
+      if (!payload?.email || !payload?.password) throw new Error("No credentials returned");
+      return {
+        email: payload.email,
+        password: payload.password,
+        mode: payload.mode ?? "created",
+        full_name: inviteName.trim() || null,
+      } as Credentials;
     },
-    onSuccess: async (actionLink) => {
-      toast.success(`Invitation sent to ${inviteEmail}`);
-      if (actionLink) {
-        try {
-          await navigator.clipboard.writeText(actionLink);
-          toast.message("Invite link copied to clipboard", {
-            description: "Share manually if the email doesn't arrive.",
-          });
-        } catch {
-          // ignore clipboard failures
-        }
-      }
+    onSuccess: (creds) => {
+      toast.success(creds.mode === "created" ? "Account created" : "Account updated");
+      setCredentials(creds);
       setInviteEmail("");
       setInviteName("");
+      setInvitePassword("");
       qc.invalidateQueries({ queryKey: ["admin-profiles"] });
       qc.invalidateQueries({ queryKey: ["admin-roles"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const resendInvite = useMutation({
-    mutationFn: async ({ email, userId }: { email: string; userId: string }) => {
+  const resetPassword = useMutation({
+    mutationFn: async ({
+      email,
+      userId,
+      fullName,
+    }: {
+      email: string;
+      userId: string;
+      fullName: string | null;
+    }) => {
       const userRoles = rolesMap?.[userId] ?? [];
       const r = userRoles[0];
-      const inviteRole: InviteRole = (["teacher", "accountant", "parent"] as const).includes(
+      const targetRole: InviteRole = (["teacher", "accountant", "parent"] as const).includes(
         r as InviteRole,
       )
         ? (r as InviteRole)
@@ -182,32 +189,32 @@ function AdminUsersPage() {
       const { data, error } = await supabase.functions.invoke("invite-user", {
         body: {
           email: email.trim().toLowerCase(),
-          role: inviteRole,
-          redirect_to: inviteRedirectUrl(),
+          role: targetRole,
+          full_name: fullName,
         },
       });
       if (error) throw error;
-      const payload = data as { error?: string; action_link?: string | null };
+      const payload = data as {
+        error?: string;
+        email?: string;
+        password?: string;
+        mode?: "created" | "reset";
+      };
       if (payload?.error) throw new Error(payload.error);
-      return payload?.action_link ?? null;
+      if (!payload?.email || !payload?.password) throw new Error("No credentials returned");
+      return {
+        email: payload.email,
+        password: payload.password,
+        mode: payload.mode ?? "reset",
+        full_name: fullName,
+      } as Credentials;
     },
-    onSuccess: async (actionLink, vars) => {
-      toast.success(`Invitation resent to ${vars.email}`);
-      if (actionLink) {
-        try {
-          await navigator.clipboard.writeText(actionLink);
-          toast.message("Invite link copied to clipboard", {
-            description: "Share manually if the email doesn't arrive.",
-          });
-        } catch {
-          // ignore
-        }
-      }
+    onSuccess: (creds) => {
+      toast.success("Temporary password issued");
+      setCredentials(creds);
     },
     onError: (e: Error) => toast.error(e.message),
   });
-
-
 
   const updateEmail = useMutation({
     mutationFn: async () => {
@@ -228,29 +235,34 @@ function AdminUsersPage() {
 
   if (role !== "admin") return <Navigate to={dashboardPathForRole(role)} />;
 
+  const credentialsMessage = credentials
+    ? `Hi ${credentials.full_name ?? ""},\n\nYour Santa Ana CWA portal account is ready.\n\nEmail: ${credentials.email}\nTemporary password: ${credentials.password}\n\nSign in here: ${window.location.origin}/login\nYou will be asked to set a new password on first sign in.`.trim()
+    : "";
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-serif text-2xl font-bold text-foreground">Users</h1>
         <p className="text-sm text-muted-foreground">
-          Invite teachers, accountants, and parents — they set their own password from the email link.
+          Create accounts for teachers, accountants and parents. Share the temporary password —
+          they will be forced to change it on first sign in.
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-serif">Invite a user</CardTitle>
+          <CardTitle className="font-serif">Create a user</CardTitle>
           <CardDescription>
-            Enter just an email and the role. We'll email a secure link for them to activate the account.
+            Leave the password blank to generate a secure one automatically.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form
-            className="grid gap-3 md:grid-cols-[1fr_1fr_180px_auto]"
+            className="grid gap-3 md:grid-cols-2 lg:grid-cols-[1fr_1fr_160px_200px_auto]"
             onSubmit={(e) => {
               e.preventDefault();
               if (!inviteEmail) return;
-              inviteUser.mutate();
+              createUser.mutate();
             }}
           >
             <div className="space-y-1.5">
@@ -286,9 +298,18 @@ function AdminUsersPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ipw">Temp password (optional)</Label>
+              <Input
+                id="ipw"
+                value={invitePassword}
+                onChange={(e) => setInvitePassword(e.target.value)}
+                placeholder="auto-generated"
+              />
+            </div>
             <div className="flex items-end">
-              <Button type="submit" disabled={inviteUser.isPending} className="w-full md:w-auto">
-                {inviteUser.isPending ? "Sending…" : "Send invite"}
+              <Button type="submit" disabled={createUser.isPending} className="w-full md:w-auto">
+                {createUser.isPending ? "Creating…" : "Create account"}
               </Button>
             </div>
           </form>
@@ -379,12 +400,16 @@ function AdminUsersPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={resendInvite.isPending}
+                        disabled={resetPassword.isPending}
                         onClick={() =>
-                          resendInvite.mutate({ email: p.email!, userId: p.id })
+                          resetPassword.mutate({
+                            email: p.email!,
+                            userId: p.id,
+                            fullName: p.full_name,
+                          })
                         }
                       >
-                        Resend invite
+                        Reset password
                       </Button>
                     )}
                     {p.status !== "approved" && (
@@ -411,6 +436,64 @@ function AdminUsersPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Credentials dialog */}
+      <Dialog open={!!credentials} onOpenChange={(o) => !o && setCredentials(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {credentials?.mode === "created" ? "Account created" : "Temporary password issued"}
+            </DialogTitle>
+            <DialogDescription>
+              Share these credentials with the user via WhatsApp, SMS, or a printed slip. They will
+              be asked to set their own password on first sign in.
+            </DialogDescription>
+          </DialogHeader>
+          {credentials && (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">Email</span>
+                  <span className="font-mono">{credentials.email}</span>
+                </div>
+                <div className="mt-2 flex justify-between gap-3">
+                  <span className="text-muted-foreground">Temporary password</span>
+                  <span className="font-mono font-semibold">{credentials.password}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(
+                      `${credentials.email} / ${credentials.password}`,
+                    );
+                    toast.success("Copied email & password");
+                  }}
+                >
+                  Copy email + password
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(credentialsMessage);
+                    toast.success("Welcome message copied");
+                  }}
+                >
+                  Copy welcome message
+                </Button>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setCredentials(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
