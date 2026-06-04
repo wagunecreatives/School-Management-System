@@ -10,6 +10,7 @@ function Landing() {
   const { user, loading, profile, roles } = useAuth();
 
   if (!loading && user) {
+    if (user.user_metadata?.must_change_password) return <Navigate to="/change-password" />;
     if (profile?.status !== "approved") return <Navigate to="/pending" />;
     return <Navigate to={dashboardPathForRole(primaryRole(roles))} />;
   }
