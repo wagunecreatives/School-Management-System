@@ -1,7 +1,7 @@
-// Admin-only: invite a user by email and pre-assign their role.
-// User clicks the link in the email and sets their own password.
-// If the user already exists, we send a password-reset email instead so
-// they can still complete account setup via the same /accept-invite page.
+// Admin-only: create a user account with a temporary password, OR reset an
+// existing user's password to a new temporary one. The admin then shares the
+// credentials manually (WhatsApp / SMS / printed slip). On first login the
+// app forces the user to change their password.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
@@ -11,6 +11,16 @@ const corsHeaders = {
 };
 
 type Role = "teacher" | "accountant" | "parent";
+
+function generatePassword(len = 12) {
+  // readable, no ambiguous chars
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -23,8 +33,7 @@ Deno.serve(async (req) => {
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
 
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const token = authHeader.replace("Bearer ", "");
+    const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
     if (!token) return json({ error: "Missing auth" }, 401);
 
     const userClient = createClient(SUPABASE_URL, ANON_KEY, {
@@ -43,7 +52,9 @@ Deno.serve(async (req) => {
     const email = String(body.email ?? "").trim().toLowerCase();
     const role = String(body.role ?? "") as Role;
     const fullName = body.full_name ? String(body.full_name) : null;
-    const redirectTo = body.redirect_to ? String(body.redirect_to) : undefined;
+    const providedPassword = body.password ? String(body.password) : "";
+    const password =
+      providedPassword && providedPassword.length >= 8 ? providedPassword : generatePassword(12);
 
     if (!email || !["teacher", "accountant", "parent"].includes(role)) {
       return json({ error: "Invalid email or role" }, 400);
@@ -53,39 +64,46 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // 1) Try to invite a brand-new user. inviteUserByEmail both creates the
-    //    user AND sends an invite email via the project's SMTP.
-    const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: { invited_role: role, full_name: fullName },
-      redirectTo,
+    // 1) Try to create the user with email pre-confirmed and a temp password.
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        invited_role: role,
+        full_name: fullName,
+        must_change_password: true,
+      },
     });
 
-    if (!inviteErr) {
-      // Also generate a recovery link as a manual fallback in case SMTP isn't
-      // configured / the default Supabase SMTP silently drops external recipients.
-      const { data: linkData } = await admin.auth.admin.generateLink({
-        type: "invite",
-        email,
-        options: { redirectTo, data: { invited_role: role, full_name: fullName } },
-      });
+    if (!createErr && created.user) {
+      // Profile is auto-created by handle_new_user trigger.
+      // Make sure status + role are right (trigger already does this for invited_role).
+      await admin
+        .from("profiles")
+        .update({ status: "approved", full_name: fullName ?? undefined })
+        .eq("id", created.user.id);
+      await admin.from("user_roles").delete().eq("user_id", created.user.id);
+      await admin.from("user_roles").insert({ user_id: created.user.id, role });
+
       return json({
         ok: true,
-        mode: "invited",
-        user_id: invited.user?.id,
-        action_link: activationLink(linkData?.properties, redirectTo, "invite"),
+        mode: "created",
+        user_id: created.user.id,
+        email,
+        password,
       });
     }
 
-    const msg = (inviteErr.message ?? "").toLowerCase();
+    const msg = (createErr?.message ?? "").toLowerCase();
     const alreadyExists =
       msg.includes("already") || msg.includes("registered") || msg.includes("exists");
-
     if (!alreadyExists) {
-      console.error("inviteUserByEmail failed:", inviteErr.message);
-      return json({ error: inviteErr.message }, 400);
+      console.error("createUser failed:", createErr?.message);
+      return json({ error: createErr?.message ?? "Failed to create user" }, 400);
     }
 
-    // 2) User exists → look them up, ensure their role/profile, then send a recovery link.
+    // 2) User exists -> locate, reset password, reassign role, force change.
     const { data: list, error: listErr } = await admin.auth.admin.listUsers({
       page: 1,
       perPage: 200,
@@ -95,33 +113,31 @@ Deno.serve(async (req) => {
     const existing = list.users.find((u) => (u.email ?? "").toLowerCase() === email);
     if (!existing) return json({ error: "User exists but could not be located" }, 400);
 
-    // Make sure profile is approved and role is assigned.
+    const { error: upErr } = await admin.auth.admin.updateUserById(existing.id, {
+      password,
+      email_confirm: true,
+      user_metadata: {
+        ...(existing.user_metadata ?? {}),
+        invited_role: role,
+        full_name: fullName ?? existing.user_metadata?.full_name ?? null,
+        must_change_password: true,
+      },
+    });
+    if (upErr) return json({ error: upErr.message }, 400);
+
     await admin
       .from("profiles")
       .update({ status: "approved", full_name: fullName ?? undefined })
       .eq("id", existing.id);
-
     await admin.from("user_roles").delete().eq("user_id", existing.id);
     await admin.from("user_roles").insert({ user_id: existing.id, role });
-
-    // generateLink(recovery) returns the action_link AND triggers the SMTP
-    // delivery on Supabase's side. We surface the link so the admin can copy
-    // and share it manually if the email never lands (e.g. default SMTP).
-    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
-      type: "recovery",
-      email,
-      options: { redirectTo },
-    });
-    if (linkErr) {
-      console.error("generateLink(recovery) failed:", linkErr.message);
-      return json({ error: linkErr.message }, 400);
-    }
 
     return json({
       ok: true,
       mode: "reset",
       user_id: existing.id,
-      action_link: activationLink(linkData?.properties, redirectTo, "recovery"),
+      email,
+      password,
     });
   } catch (e) {
     console.error("invite-user error:", e);
@@ -134,32 +150,4 @@ function json(b: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json", ...corsHeaders },
   });
-}
-
-function activationLink(
-  properties: Record<string, unknown> | undefined,
-  redirectTo: string | undefined,
-  type: "invite" | "recovery",
-) {
-  const hashedToken = typeof properties?.hashed_token === "string" ? properties.hashed_token : null;
-  if (redirectTo && hashedToken) {
-    const url = new URL(redirectTo);
-    url.searchParams.set("token_hash", hashedToken);
-    url.searchParams.set("type", type);
-    return url.toString();
-  }
-  const actionLink = typeof properties?.action_link === "string" ? properties.action_link : null;
-  return withRedirect(actionLink, redirectTo);
-}
-
-function withRedirect(actionLink: string | null, redirectTo?: string) {
-  if (!actionLink) return null;
-  if (!redirectTo) return actionLink;
-  try {
-    const url = new URL(actionLink);
-    url.searchParams.set("redirect_to", redirectTo);
-    return url.toString();
-  } catch {
-    return actionLink;
-  }
 }
