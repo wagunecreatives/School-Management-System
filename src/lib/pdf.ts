@@ -1,7 +1,10 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-const SCHOOL = "School Management System";
+const SCHOOL = "Santa Ana Calm Waters Academy";
+const SCHOOL_ADDRESS = "P.O. Box 1234, School Lane, Lagos, Nigeria";
+const SCHOOL_CONTACT = "Tel: +234 800 000 0000 • Email: info@santaana.school";
+const SCHOOL_PAYMENT = "Bank: First Bank • Account: Santa Ana Academy • Acct No: 0123456789";
 
 function header(doc: jsPDF, title: string, subtitle?: string) {
   doc.setFont("helvetica", "bold");
