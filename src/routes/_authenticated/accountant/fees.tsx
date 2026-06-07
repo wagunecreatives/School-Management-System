@@ -454,12 +454,14 @@ function AccountantFeesPage() {
                   <TableHead>Balance</TableHead>
                   <TableHead>Due</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Invoice</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {invoices?.map((i) => {
                   const paid = i.fee_payments.reduce((s, p) => s + Number(p.amount), 0);
                   const balance = Number(i.amount) - paid;
+                  const invoiceNo = `INV-${new Date().getFullYear()}-${i.id.slice(0, 6).toUpperCase()}`;
                   return (
                     <TableRow key={i.id}>
                       <TableCell className="font-medium">{i.students?.full_name}</TableCell>
@@ -470,12 +472,41 @@ function AccountantFeesPage() {
                       <TableCell>₦{balance.toLocaleString()}</TableCell>
                       <TableCell>{i.due_date ?? "—"}</TableCell>
                       <TableCell className="capitalize">{i.status}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            generateInvoicePdf({
+                              invoiceNo,
+                              issueDate: new Date().toISOString().slice(0, 10),
+                              dueDate: i.due_date,
+                              student: {
+                                fullName: i.students?.full_name ?? "Student",
+                                className: i.students?.classes?.name ?? null,
+                              },
+                              term: i.term,
+                              items: [
+                                {
+                                  description: `School Fees — ${i.term}`,
+                                  period: i.term,
+                                  quantity: 1,
+                                  unitPrice: Number(i.amount),
+                                },
+                              ],
+                              paid,
+                            })
+                          }
+                        >
+                          Download
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
                 {invoices?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground">
                       No invoices yet
                     </TableCell>
                   </TableRow>
