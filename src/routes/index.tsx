@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useAuth, primaryRole, dashboardPathForRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import schoolLogo from "@/assets/school-logo.png.asset.json";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -19,9 +20,7 @@ function Landing() {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/40">
       <header className="container mx-auto flex items-center justify-between px-6 py-6">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-serif text-lg font-bold">
-            SA
-          </div>
+          <img src={schoolLogo.url} alt="Santa Ana Calm Waters Academy" className="h-12 w-12 object-contain" />
           <span className="font-serif text-lg font-semibold text-foreground">
             Santa Ana Calm Waters Academy
           </span>
