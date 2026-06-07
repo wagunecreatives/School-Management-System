@@ -101,7 +101,14 @@ export function AuthShell({
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background to-secondary/50 px-4 py-12">
       <div className="w-full max-w-md">
         <Link to="/" className="mb-6 flex flex-col items-center justify-center gap-2">
-          <img src={schoolLogo.url} alt="Santa Ana Calm Waters Academy" className="h-20 w-20 object-contain" />
+          <img
+            src={schoolLogo}
+            alt="Santa Ana Calm Waters Academy"
+            loading="eager"
+            referrerPolicy="no-referrer"
+            className="h-20 w-20 object-contain"
+
+          />
           <span className="font-serif text-base font-semibold text-foreground">
             Santa Ana Calm Waters Academy
           </span>
@@ -114,4 +121,4 @@ export function AuthShell({
       </div>
     </div>
   );
-}
+} 
