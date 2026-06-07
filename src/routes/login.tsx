@@ -6,7 +6,7 @@ import { lovable } from "@/integrations/lovable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import schoolLogo from "@/assets/school-logo.png.asset.json";
+import schoolLogo from "@/assets/school logo.png?url";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,

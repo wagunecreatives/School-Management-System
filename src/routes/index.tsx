@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useAuth, primaryRole, dashboardPathForRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import schoolLogo from "@/assets/school-logo.png.asset.json";
+import schoolLogo from "@/assets/school logo.png?url";
 
 export const Route = createFileRoute("/")({
   component: Landing,

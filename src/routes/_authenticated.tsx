@@ -1,7 +1,7 @@
 import { createFileRoute, Navigate, Outlet, Link, useNavigate, useLocation } from "@tanstack/react-router";
 import { useAuth, primaryRole, dashboardPathForRole, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import schoolLogo from "@/assets/school-logo.png.asset.json";
+import schoolLogo from "@/assets/school logo.png";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -43,7 +43,7 @@ function AuthenticatedLayout() {
     <div className="flex min-h-screen bg-background">
       <aside className="hidden w-64 shrink-0 border-r border-border bg-card md:block">
         <div className="flex h-16 items-center gap-2 border-b border-border px-5">
-          <img src={schoolLogo.url} alt="Santa Ana CWA" className="h-9 w-9 object-contain" />
+<img src={schoolLogo} alt="Santa Ana CWA" className="h-9 w-9 object-contain" />
           <span className="font-serif text-sm font-semibold text-foreground">Santa Ana CWA</span>
         </div>
         <nav className="space-y-1 p-3">
