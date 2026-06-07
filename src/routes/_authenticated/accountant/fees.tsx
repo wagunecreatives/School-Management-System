@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { generateInvoicePdf } from "@/lib/pdf";
 import {
   PieChart,
   Pie,
