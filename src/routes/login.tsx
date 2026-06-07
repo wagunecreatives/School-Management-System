@@ -6,6 +6,7 @@ import { lovable } from "@/integrations/lovable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import schoolLogo from "@/assets/school-logo.png.asset.json";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -99,10 +100,8 @@ export function AuthShell({
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background to-secondary/50 px-4 py-12">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-serif text-lg font-bold">
-            SA
-          </div>
+        <Link to="/" className="mb-6 flex flex-col items-center justify-center gap-2">
+          <img src={schoolLogo.url} alt="Santa Ana Calm Waters Academy" className="h-20 w-20 object-contain" />
           <span className="font-serif text-base font-semibold text-foreground">
             Santa Ana Calm Waters Academy
           </span>
