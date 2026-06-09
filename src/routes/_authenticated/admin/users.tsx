@@ -452,6 +452,16 @@ function AdminUsersPage() {
                         Reject
                       </Button>
                     )}
+                    {user?.id !== p.id && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setDeleting(p)}
+                      >
+                        Delete
+                      </Button>
+                    )}
+
                   </TableCell>
                 </TableRow>
               );
