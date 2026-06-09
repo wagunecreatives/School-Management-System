@@ -20,7 +20,7 @@ function Landing() {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/40">
       <header className="container mx-auto flex items-center justify-between px-6 py-6">
         <div className="flex items-center gap-3">
-          <img src={schoolLogo.url} alt="Santa Ana Calm Waters Academy" className="h-12 w-12 object-contain" />
+          <img src={schoolLogo} alt="Santa Ana Calm Waters Academy" className="h-12 w-12 object-contain" />
           <span className="font-serif text-lg font-semibold text-foreground">
             Santa Ana Calm Waters Academy
           </span>
