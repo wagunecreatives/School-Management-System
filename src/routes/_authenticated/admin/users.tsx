@@ -79,6 +79,10 @@ function AdminUsersPage() {
   const [editing, setEditing] = useState<ProfileRow | null>(null);
   const [editingEmail, setEditingEmail] = useState("");
 
+  // Delete confirm dialog
+  const [deleting, setDeleting] = useState<ProfileRow | null>(null);
+
+
   const { data: profiles, isLoading } = useQuery({
     queryKey: ["admin-profiles"],
     queryFn: async () => {
