@@ -61,9 +61,10 @@ interface Credentials {
 }
 
 function AdminUsersPage() {
-  const { roles } = useAuth();
+  const { roles, user } = useAuth();
   const role = primaryRole(roles);
   const qc = useQueryClient();
+
   const [pendingRole, setPendingRole] = useState<Record<string, AppRole>>({});
 
   // Create-user form
@@ -78,6 +79,10 @@ function AdminUsersPage() {
   // Edit-email dialog
   const [editing, setEditing] = useState<ProfileRow | null>(null);
   const [editingEmail, setEditingEmail] = useState("");
+
+  // Delete confirm dialog
+  const [deleting, setDeleting] = useState<ProfileRow | null>(null);
+
 
   const { data: profiles, isLoading } = useQuery({
     queryKey: ["admin-profiles"],
@@ -233,7 +238,25 @@ function AdminUsersPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const deleteUser = useMutation({
+    mutationFn: async (userId: string) => {
+      const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+        body: { user_id: userId },
+      });
+      if (error) throw error;
+      if ((data as { error?: string })?.error) throw new Error((data as { error: string }).error);
+    },
+    onSuccess: () => {
+      toast.success("User deleted");
+      setDeleting(null);
+      qc.invalidateQueries({ queryKey: ["admin-profiles"] });
+      qc.invalidateQueries({ queryKey: ["admin-roles"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (role !== "admin") return <Navigate to={dashboardPathForRole(role)} />;
+
 
   const credentialsMessage = credentials
     ? `Hi ${credentials.full_name ?? ""},\n\nYour Santa Ana CWA portal account is ready.\n\nEmail: ${credentials.email}\nTemporary password: ${credentials.password}\n\nSign in here: ${window.location.origin}/login\nYou will be asked to set a new password on first sign in.`.trim()
@@ -429,6 +452,16 @@ function AdminUsersPage() {
                         Reject
                       </Button>
                     )}
+                    {user?.id !== p.id && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setDeleting(p)}
+                      >
+                        Delete
+                      </Button>
+                    )}
+
                   </TableCell>
                 </TableRow>
               );
@@ -525,6 +558,31 @@ function AdminUsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete user?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes {deleting?.full_name ?? deleting?.email}'s account,
+              profile, and role assignments. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteUser.isPending}
+              onClick={() => deleting && deleteUser.mutate(deleting.id)}
+            >
+              {deleteUser.isPending ? "Deleting…" : "Delete permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
