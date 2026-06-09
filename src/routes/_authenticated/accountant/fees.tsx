@@ -467,9 +467,9 @@ function AccountantFeesPage() {
                       <TableCell className="font-medium">{i.students?.full_name}</TableCell>
                       <TableCell>{i.students?.classes?.name ?? "—"}</TableCell>
                       <TableCell>{i.term}</TableCell>
-                      <TableCell>₦{Number(i.amount).toLocaleString()}</TableCell>
-                      <TableCell>₦{paid.toLocaleString()}</TableCell>
-                      <TableCell>₦{balance.toLocaleString()}</TableCell>
+                      <TableCell>KSh{Number(i.amount).toLocaleString()}</TableCell>
+                      <TableCell>KSh{paid.toLocaleString()}</TableCell>
+                      <TableCell>KSh{balance.toLocaleString()}</TableCell>
                       <TableCell>{i.due_date ?? "—"}</TableCell>
                       <TableCell className="capitalize">{i.status}</TableCell>
                       <TableCell className="text-right">
@@ -532,7 +532,7 @@ function AccountantFeesPage() {
                     ?.filter((i) => i.status !== "paid")
                     .map((i) => (
                       <SelectItem key={i.id} value={i.id}>
-                        {i.students?.full_name} — {i.term} — ₦
+                        {i.students?.full_name} — {i.term} — KSh
                         {Number(i.amount).toLocaleString()}
                       </SelectItem>
                     ))}
@@ -595,7 +595,7 @@ function AccountantFeesPage() {
                       {p.fee_invoices?.students?.full_name}
                     </TableCell>
                     <TableCell>{p.fee_invoices?.term}</TableCell>
-                    <TableCell>₦{Number(p.amount).toLocaleString()}</TableCell>
+                    <TableCell>KSh{Number(p.amount).toLocaleString()}</TableCell>
                     <TableCell>{p.method ?? "—"}</TableCell>
                     <TableCell>{p.receipt_no ?? "—"}</TableCell>
                   </TableRow>
@@ -672,9 +672,9 @@ function AccountantFeesPage() {
 
         <TabsContent value="analytics" className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Total billed" value={`₦${totals.billed.toLocaleString()}`} />
-            <Stat label="Total collected" value={`₦${totals.collected.toLocaleString()}`} />
-            <Stat label="Outstanding" value={`₦${totals.outstanding.toLocaleString()}`} />
+            <Stat label="Total billed" value={`KSh${totals.billed.toLocaleString()}`} />
+            <Stat label="Total collected" value={`KSh${totals.collected.toLocaleString()}`} />
+            <Stat label="Outstanding" value={`KSh${totals.outstanding.toLocaleString()}`} />
             <Stat label="Collection rate" value={`${totals.rate}%`} />
           </div>
 
@@ -702,7 +702,7 @@ function AccountantFeesPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(v: number) => `₦${Number(v).toLocaleString()}`}
+                      formatter={(v: number) => `KSh${Number(v).toLocaleString()}`}
                     />
                     <Legend />
                   </PieChart>
@@ -721,7 +721,7 @@ function AccountantFeesPage() {
                     <XAxis dataKey="className" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                     <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
                     <Tooltip
-                      formatter={(v: number) => `₦${Number(v).toLocaleString()}`}
+                      formatter={(v: number) => `KSh${Number(v).toLocaleString()}`}
                       contentStyle={{
                         background: "hsl(var(--card))",
                         border: "1px solid hsl(var(--border))",
@@ -756,9 +756,9 @@ function AccountantFeesPage() {
                 {classAnalytics.map((c) => (
                   <TableRow key={c.className}>
                     <TableCell className="font-medium">{c.className}</TableCell>
-                    <TableCell>₦{c.billed.toLocaleString()}</TableCell>
-                    <TableCell>₦{c.collected.toLocaleString()}</TableCell>
-                    <TableCell>₦{c.outstanding.toLocaleString()}</TableCell>
+                    <TableCell>KSh{c.billed.toLocaleString()}</TableCell>
+                    <TableCell>KSh{c.collected.toLocaleString()}</TableCell>
+                    <TableCell>KSh{c.outstanding.toLocaleString()}</TableCell>
                     <TableCell>{c.rate}%</TableCell>
                   </TableRow>
                 ))}

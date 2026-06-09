@@ -146,11 +146,11 @@ function StudentProfilePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard label="Billed" value={`₦${billed.toLocaleString()}`} />
-        <SummaryCard label="Paid" value={`₦${paid.toLocaleString()}`} />
+        <SummaryCard label="Billed" value={`KSh${billed.toLocaleString()}`} />
+        <SummaryCard label="Paid" value={`KSh${paid.toLocaleString()}`} />
         <SummaryCard
           label="Balance"
-          value={`₦${(billed - paid).toLocaleString()}`}
+          value={`KSh${(billed - paid).toLocaleString()}`}
           highlight={billed - paid > 0}
         />
       </div>
@@ -184,8 +184,8 @@ function StudentProfilePage() {
                     return (
                       <TableRow key={i.id}>
                         <TableCell>{i.term}</TableCell>
-                        <TableCell>₦{Number(i.amount).toLocaleString()}</TableCell>
-                        <TableCell>₦{p.toLocaleString()}</TableCell>
+                        <TableCell>KSh{Number(i.amount).toLocaleString()}</TableCell>
+                        <TableCell>KSh{p.toLocaleString()}</TableCell>
                         <TableCell>{i.due_date ?? "—"}</TableCell>
                         <TableCell className="capitalize">{i.status}</TableCell>
                       </TableRow>
@@ -223,7 +223,7 @@ function StudentProfilePage() {
                     .map((p) => (
                       <TableRow key={p.id}>
                         <TableCell>{p.paid_on}</TableCell>
-                        <TableCell>₦{Number(p.amount).toLocaleString()}</TableCell>
+                        <TableCell>KSh{Number(p.amount).toLocaleString()}</TableCell>
                         <TableCell>{p.method ?? "—"}</TableCell>
                         <TableCell>{p.receipt_no ?? "—"}</TableCell>
                       </TableRow>

@@ -68,11 +68,11 @@ function ParentDashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <SummaryCard label="Children" value={totalChildren.toString()} />
-        <SummaryCard label="Total billed" value={`₦${billed.toLocaleString()}`} />
-        <SummaryCard label="Total paid" value={`₦${paid.toLocaleString()}`} />
+        <SummaryCard label="Total billed" value={`KSh${billed.toLocaleString()}`} />
+        <SummaryCard label="Total paid" value={`KSh${paid.toLocaleString()}`} />
         <SummaryCard
           label="Outstanding"
-          value={`₦${balance.toLocaleString()}`}
+          value={`KSh${balance.toLocaleString()}`}
           highlight={balance > 0}
         />
       </div>
