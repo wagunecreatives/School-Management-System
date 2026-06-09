@@ -61,9 +61,10 @@ interface Credentials {
 }
 
 function AdminUsersPage() {
-  const { roles } = useAuth();
+  const { roles, user } = useAuth();
   const role = primaryRole(roles);
   const qc = useQueryClient();
+
   const [pendingRole, setPendingRole] = useState<Record<string, AppRole>>({});
 
   // Create-user form
