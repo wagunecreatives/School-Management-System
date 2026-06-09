@@ -110,16 +110,16 @@ function ParentChildrenPage() {
                     <div className="grid grid-cols-3 gap-3 rounded-lg border border-border bg-secondary/30 p-4 text-sm">
                       <div>
                         <p className="text-muted-foreground">Total billed</p>
-                        <p className="font-semibold">₦{totalDue.toLocaleString()}</p>
+                        <p className="font-semibold">KSh{totalDue.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Paid</p>
-                        <p className="font-semibold">₦{totalPaid.toLocaleString()}</p>
+                        <p className="font-semibold">KSh{totalPaid.toLocaleString()}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Balance</p>
                         <p className="font-semibold">
-                          ₦{(totalDue - totalPaid).toLocaleString()}
+                          KSh{(totalDue - totalPaid).toLocaleString()}
                         </p>
                       </div>
                     </div>
@@ -141,8 +141,8 @@ function ParentChildrenPage() {
                           return (
                             <TableRow key={i.id}>
                               <TableCell>{i.term}</TableCell>
-                              <TableCell>₦{Number(i.amount).toLocaleString()}</TableCell>
-                              <TableCell>₦{paid.toLocaleString()}</TableCell>
+                              <TableCell>KSh{Number(i.amount).toLocaleString()}</TableCell>
+                              <TableCell>KSh{paid.toLocaleString()}</TableCell>
                               <TableCell className="capitalize">{i.status}</TableCell>
                             </TableRow>
                           );

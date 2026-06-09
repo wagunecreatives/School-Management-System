@@ -57,9 +57,9 @@ export function generateFeeStatementPdf(input: FeeStatementInput) {
     head: [["Term", "Amount", "Paid", "Balance", "Due", "Status"]],
     body: input.invoices.map((i) => [
       i.term,
-      `NGN ${Number(i.amount).toLocaleString()}`,
-      `NGN ${Number(i.paid).toLocaleString()}`,
-      `NGN ${(Number(i.amount) - Number(i.paid)).toLocaleString()}`,
+      `KES ${Number(i.amount).toLocaleString()}`,
+      `KES ${Number(i.paid).toLocaleString()}`,
+      `KES ${(Number(i.amount) - Number(i.paid)).toLocaleString()}`,
       i.due_date ?? "—",
       i.status,
     ]),
@@ -71,7 +71,7 @@ export function generateFeeStatementPdf(input: FeeStatementInput) {
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.text(
-    `Billed: NGN ${billed.toLocaleString()}    Paid: NGN ${paid.toLocaleString()}    Balance: NGN ${balance.toLocaleString()}`,
+    `Billed: KES ${billed.toLocaleString()}    Paid: KES ${paid.toLocaleString()}    Balance: KES ${balance.toLocaleString()}`,
     14,
     y,
   );
@@ -86,7 +86,7 @@ export function generateFeeStatementPdf(input: FeeStatementInput) {
       body: input.payments.map((p) => [
         p.paid_on,
         p.term ?? "—",
-        `NGN ${Number(p.amount).toLocaleString()}`,
+        `KES ${Number(p.amount).toLocaleString()}`,
         p.method ?? "—",
         p.receipt_no ?? "—",
       ]),
@@ -168,7 +168,7 @@ export function generateReceiptPdf(input: ReceiptInput) {
     body: [
       ["Student", input.studentName],
       ["Term", input.term],
-      ["Amount", `NGN ${Number(input.amount).toLocaleString()}`],
+      ["Amount", `KES ${Number(input.amount).toLocaleString()}`],
       ["Paid on", input.paidOn],
       ["Method", input.method ?? "—"],
       ["Receipt #", input.receiptNo],
@@ -260,8 +260,8 @@ export function generateInvoicePdf(input: InvoicePdfInput) {
     it.description,
     it.period,
     String(it.quantity),
-    `NGN ${Number(it.unitPrice).toLocaleString()}`,
-    `NGN ${(it.quantity * it.unitPrice).toLocaleString()}`,
+    `KES ${Number(it.unitPrice).toLocaleString()}`,
+    `KES ${(it.quantity * it.unitPrice).toLocaleString()}`,
   ]);
 
   autoTable(doc, {
@@ -292,12 +292,12 @@ export function generateInvoicePdf(input: InvoicePdfInput) {
   doc.setFontSize(10);
 
   const totalsRows: [string, string, boolean?][] = [
-    ["Subtotal", `NGN ${subtotal.toLocaleString()}`],
-    ["Discount", `- NGN ${discount.toLocaleString()}`],
-    ["Tax / VAT", `NGN ${tax.toLocaleString()}`],
-    ["Grand Total", `NGN ${grand.toLocaleString()}`, true],
-    ["Paid", `NGN ${paid.toLocaleString()}`],
-    ["Balance Due", `NGN ${balance.toLocaleString()}`, true],
+    ["Subtotal", `KES ${subtotal.toLocaleString()}`],
+    ["Discount", `- KES ${discount.toLocaleString()}`],
+    ["Tax / VAT", `KES ${tax.toLocaleString()}`],
+    ["Grand Total", `KES ${grand.toLocaleString()}`, true],
+    ["Paid", `KES ${paid.toLocaleString()}`],
+    ["Balance Due", `KES ${balance.toLocaleString()}`, true],
   ];
 
   for (const [label, val, bold] of totalsRows) {
