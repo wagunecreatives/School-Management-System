@@ -93,6 +93,9 @@
     "vite": "^7.3.1"
   },
   "overrides": {
-    "lru-cache": "^11.5.1"
+    "lru-cache": "5.1.1"
+  },
+  "resolutions": {
+    "lru-cache": "5.1.1"
   }
 }
