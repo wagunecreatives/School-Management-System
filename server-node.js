@@ -1,7 +1,7 @@
 import http from "node:http";
 import server from "./dist/server/server.js";
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : 10000;
 
 const nodeServer = http.createServer(async (req, res) => {
   const url = `http://${req.headers.host}${req.url}`;
