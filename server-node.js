@@ -1,34 +1,45 @@
-import http from "node:http";
+import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import server from "./dist/server/server.js";
 
-const PORT = process.env.PORT ? Number(process.env.PORT) : 10000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const nodeServer = http.createServer(async (req, res) => {
-  const url = `http://${req.headers.host}${req.url}`;
+const app = express();
 
-  const request = new Request(url, {
-    method: req.method,
-    headers: req.headers,
-  });
+const clientDir = path.join(__dirname, "dist", "client");
+app.use(express.static(clientDir));
 
+app.all("*", async (req, res) => {
   try {
+    const url = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+
+    const request = new Request(url, {
+      method: req.method,
+      headers: req.headers,
+    });
+
     const response = await server.fetch(request, {}, {});
 
-    res.statusCode = response.status;
+    res.status(response.status);
+
     response.headers.forEach((value, key) => {
       res.setHeader(key, value);
     });
 
     const body = await response.arrayBuffer();
-    res.end(Buffer.from(body));
-  } catch (err) {
-    console.error(err);
-    res.statusCode = 500;
-    res.end("Internal Server Error");
+    res.send(Buffer.from(body));
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
   }
 });
 
-nodeServer.listen(PORT, () => {
+const PORT = process.env.PORT || 10000;
+
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
 
