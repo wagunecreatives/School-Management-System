@@ -2,6 +2,14 @@ import { createFileRoute, Navigate, Outlet, Link, useNavigate, useLocation } fro
 import { useAuth, primaryRole, dashboardPathForRole, type AppRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import schoolLogo from "@/assets/school logo.png";
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetClose,
+} from "@/components/ui/sheet";
+
+
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -43,7 +51,11 @@ function AuthenticatedLayout() {
     <div className="flex min-h-screen bg-background">
       <aside className="hidden w-64 shrink-0 border-r border-border bg-card md:block">
         <div className="flex h-16 items-center gap-2 border-b border-border px-5">
-<img src={schoolLogo} alt="Santa Ana CWA" className="h-9 w-9 object-contain" />
+          <img
+            src={schoolLogo}
+            alt="Santa Ana CWA"
+            className="h-9 w-9 object-contain"
+          />
           <span className="font-serif text-sm font-semibold text-foreground">Santa Ana CWA</span>
         </div>
         <nav className="space-y-1 p-3">
@@ -65,16 +77,59 @@ function AuthenticatedLayout() {
           })}
         </nav>
       </aside>
+
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
-              {role ?? "user"} dashboard
-            </p>
-            <p className="font-serif text-base font-semibold text-foreground">
-              {profile?.full_name ?? profile?.email}
-            </p>
+        <header className="flex h-16 items-center justify-between gap-3 border-b border-border bg-card px-6">
+          <div className="flex items-center gap-3">
+            <div className="md:hidden">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="Open menu">
+                    ☰
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-64 p-0">
+                  <div className="flex h-16 items-center gap-2 border-b border-border px-5">
+                    <img
+                      src={schoolLogo}
+                      alt="Santa Ana CWA"
+                      className="h-9 w-9 object-contain"
+                    />
+                    <span className="font-serif text-sm font-semibold text-foreground">Santa Ana CWA</span>
+                  </div>
+                  <nav className="space-y-1 p-3">
+                    {items.map((it) => {
+                      const active = location.pathname.startsWith(it.to);
+                      return (
+                        <SheetClose asChild key={it.to}>
+                          <Link
+                            to={it.to}
+                            className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                              active
+                                ? "bg-primary text-primary-foreground"
+                                : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                            }`}
+                          >
+                            {it.label}
+                          </Link>
+                        </SheetClose>
+                      );
+                    })}
+                  </nav>
+                </SheetContent>
+              </Sheet>
+            </div>
+
+            <div>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                {role ?? "user"} dashboard
+              </p>
+              <p className="font-serif text-base font-semibold text-foreground">
+                {profile?.full_name ?? profile?.email}
+              </p>
+            </div>
           </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -86,6 +141,7 @@ function AuthenticatedLayout() {
             Sign out
           </Button>
         </header>
+
         <main className="flex-1 p-6">
           <Outlet />
         </main>

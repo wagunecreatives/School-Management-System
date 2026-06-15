@@ -1,8 +1,9 @@
-# TODO — Fix SSR + Static Assets
+# TODO - Responsive mobile navigation fix
 
-- [ ] Replace `server-node.js` with an Express-based server that serves `dist/client` static files and forwards all other requests to `dist/server/server.js`.
-- [ ] Add `express` dependency if needed (`npm i express`).
-- [ ] Run `npm install`, `npm run build`, then `npm start`.
-- [ ] Verify that `/assets/*.js`, `/assets/*.css`, and images return 200 (no more 404).
-- [ ] If SSR still shows branded error, temporarily modify the SSR catch block to print real stack traces and re-test.
+- [x] Update `src/routes/_authenticated.tsx` to add a mobile hamburger button.
+- [x] Add a mobile `Sheet` drawer containing the role-based sidebar links.
+- [x] Keep existing desktop sidebar (shown at `md` and up).
+- [x] Ensure drawer links close on navigation (optional: via SheetClose).
+- [x] Run build/lint/tests (if available) to ensure no TS/React issues.
+
 
