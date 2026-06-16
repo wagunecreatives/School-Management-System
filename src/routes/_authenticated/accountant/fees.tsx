@@ -80,7 +80,12 @@ function AccountantFeesPage() {
 
   const [studentId, setStudentId] = useState("");
   const [term, setTerm] = useState("First Term");
-  const [amount, setAmount] = useState("");
+ const [items, setItems] = useState([
+  { item_name: "Tuition", amount: "" }
+]);
+const totalAmount = useMemo(() => {
+  return items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+}, [items]);
   const [dueDate, setDueDate] = useState("");
 
   const [payInvoiceId, setPayInvoiceId] = useState("");
@@ -88,6 +93,7 @@ function AccountantFeesPage() {
   const [method, setMethod] = useState("Cash");
   const [receiptNo, setReceiptNo] = useState("");
 
+  const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadReport, setUploadReport] = useState<{
     matched: number;
@@ -109,18 +115,28 @@ function AccountantFeesPage() {
   });
 
   const { data: invoices } = useQuery({
-    queryKey: ["invoices"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("fee_invoices")
-        .select(
-          "id, term, amount, due_date, status, student_id, students(full_name, class_id, classes(name)), fee_payments(amount)",
-        )
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as InvoiceRow[];
-    },
-  });
+  queryKey: ["invoices"],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from("fee_invoices")
+      .select(`
+        id,
+        term,
+        amount,
+        due_date,
+        status,
+        student_id,
+        notes,
+        students(full_name, class_id, classes(name)),
+        fee_payments(amount),
+        invoice_items(item_name, amount)
+      `)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+return data ?? [];
+  },
+});
 
   const { data: payments } = useQuery({
     queryKey: ["payments"],
@@ -142,7 +158,7 @@ function AccountantFeesPage() {
       const { error } = await supabase.from("fee_invoices").insert({
         student_id: studentId,
         term,
-        amount: Number(amount),
+        amount: totalAmount,
         due_date: dueDate || null,
         created_by: user?.id,
       });
@@ -151,7 +167,6 @@ function AccountantFeesPage() {
     onSuccess: () => {
       toast.success("Invoice created");
       setStudentId("");
-      setAmount("");
       setDueDate("");
       qc.invalidateQueries({ queryKey: ["invoices"] });
     },
@@ -176,13 +191,13 @@ function AccountantFeesPage() {
       }
     },
     onSuccess: () => {
-      toast.success("Payment recorded");
-      setPayInvoiceId("");
-      setPayAmount("");
-      setReceiptNo("");
-      qc.invalidateQueries({ queryKey: ["invoices"] });
-      qc.invalidateQueries({ queryKey: ["payments"] });
-    },
+  toast.success("Invoice created");
+  setStudentId("");
+  setDueDate("");
+  setItems([{ item_name: "Tuition", amount: "" }]);
+  setNotes("");
+  qc.invalidateQueries({ queryKey: ["invoices"] });
+},
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -221,14 +236,15 @@ function AccountantFeesPage() {
     return <Navigate to={dashboardPathForRole(role)} />;
 
   const onCreateInvoice = (e: FormEvent) => {
-    e.preventDefault();
-    if (!studentId || !amount) {
-      toast.error("Select a student and enter the amount");
-      return;
-    }
-    createInvoice.mutate();
-  };
+  e.preventDefault();
 
+  if (!studentId || totalAmount <= 0) {
+    toast.error("Select a student and add invoice items");
+    return;
+  }
+
+  createInvoice.mutate();
+};
   const onRecordPayment = (e: FormEvent) => {
     e.preventDefault();
     if (!payInvoiceId || !payAmount) {
@@ -321,6 +337,7 @@ function AccountantFeesPage() {
               term: rowTerm,
               amount: amt || 0,
               due_date: due,
+              notes: notes || null,
               created_by: user?.id,
             })
             .select("id, amount")
@@ -388,59 +405,107 @@ function AccountantFeesPage() {
         </TabsList>
 
         <TabsContent value="invoices" className="space-y-4">
-          <form
-            onSubmit={onCreateInvoice}
-            className="grid gap-4 rounded-xl border border-border bg-card p-6 sm:grid-cols-2 lg:grid-cols-4"
-          >
-            <div className="space-y-2">
-              <Label>Student</Label>
-              <Select value={studentId} onValueChange={setStudentId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select student" />
-                </SelectTrigger>
-                <SelectContent>
-                  {students?.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Term</Label>
-              <Select value={term} onValueChange={setTerm}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="First Term">First Term</SelectItem>
-                  <SelectItem value="Second Term">Second Term</SelectItem>
-                  <SelectItem value="Third Term">Third Term</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Amount</Label>
-              <Input
-                type="number"
-                min={0}
-                step="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Due date</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </div>
-            <div className="sm:col-span-2 lg:col-span-4">
-              <Button type="submit" disabled={createInvoice.isPending}>
-                {createInvoice.isPending ? "Saving..." : "Create invoice"}
-              </Button>
-            </div>
-          </form>
+        <form
+  onSubmit={onCreateInvoice}
+  className="grid gap-4 rounded-xl border border-border bg-card p-6 sm:grid-cols-2 lg:grid-cols-4"
+>
+  {/* Student */}
+  <div className="space-y-2">
+    <Label>Student</Label>
+    <Select value={studentId} onValueChange={setStudentId}>
+      <SelectTrigger>
+        <SelectValue placeholder="Select student" />
+      </SelectTrigger>
+      <SelectContent>
+        {students?.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            {s.full_name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
+
+  {/* Term */}
+  <div className="space-y-2">
+    <Label>Term</Label>
+    <Select value={term} onValueChange={setTerm}>
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="First Term">First Term</SelectItem>
+        <SelectItem value="Second Term">Second Term</SelectItem>
+        <SelectItem value="Third Term">Third Term</SelectItem>
+      </SelectContent>
+    </Select>
+  </div>
+
+  {/* Breakdown */}
+  <div className="sm:col-span-2 lg:col-span-4 space-y-2">
+    <Label>Invoice Breakdown</Label>
+
+    {items.map((item, idx) => (
+      <div key={idx} className="flex gap-2">
+        <Input
+          placeholder="Item name"
+          value={item.item_name}
+          onChange={(e) => {
+            const copy = [...items];
+            copy[idx].item_name = e.target.value;
+            setItems(copy);
+          }}
+        />
+
+        <Input
+          type="number"
+          placeholder="Amount"
+          value={item.amount}
+          onChange={(e) => {
+            const copy = [...items];
+            copy[idx].amount = e.target.value;
+            setItems(copy);
+          }}
+        />
+      </div>
+    ))}
+
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => setItems([...items, { item_name: "", amount: "" }])}
+    >
+      + Add Item
+    </Button>
+
+    <p className="text-sm font-semibold">
+      Total: KSh {totalAmount.toLocaleString()}
+    </p>
+  </div>
+
+  {/* Notes */}
+  <div className="sm:col-span-2 lg:col-span-4 space-y-2">
+    <Label>Invoice Notes</Label>
+    <Input
+      value={notes}
+      onChange={(e) => setNotes(e.target.value)}
+      placeholder="e.g. Pay before 5th..."
+    />
+  </div>
+
+  {/* Due Date */}
+  <div className="space-y-2">
+    <Label>Due date</Label>
+    <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+  </div>
+
+  {/* Submit */}
+  <div className="sm:col-span-2 lg:col-span-4">
+    <Button type="submit" disabled={createInvoice.isPending}>
+      {createInvoice.isPending ? "Saving..." : "Create invoice"}
+    </Button>
+  </div>
+</form>
 
           <div className="rounded-xl border border-border bg-card">
             <Table>
