@@ -29,7 +29,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
@@ -65,10 +65,13 @@ function TeacherResultsPage() {
   const [studentId, setStudentId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [term, setTerm] = useState("First Term");
+  const [assessmentCategoryId, setAssessmentCategoryId] = useState("");
   const [score, setScore] = useState("");
   const [remarks, setRemarks] = useState("");
 
   const [uploadTerm, setUploadTerm] = useState("First Term");
+  const [uploadAssessmentCategoryId, setUploadAssessmentCategoryId] = useState("");
+
   const [uploading, setUploading] = useState(false);
   const [uploadReport, setUploadReport] = useState<UploadRow[]>([]);
 
@@ -98,12 +101,37 @@ function TeacherResultsPage() {
     },
   });
 
+  const { data: assessmentCategories } = useQuery({
+    queryKey: ["assessment-categories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("assessment_categories")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (error) throw error;
+      return data as Array<{ id: string; name: string }>;
+    },
+  });
+
+  // If user hasn't selected anything yet and categories are loaded, default to first one.
+  // This keeps the UI usable without forcing an extra user action.
+ 
   const { data: results } = useQuery({
     queryKey: ["t-results", user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("results")
-        .select("id, term, score, grade, remarks, students(full_name), subjects(name)")
+        .select(`
+  id,
+  term,
+  score,
+  grade,
+  remarks,
+  students(full_name),
+  subjects(name),
+  assessment_categories(name)
+`)
         .order("created_at", { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -118,22 +146,48 @@ function TeacherResultsPage() {
       }>;
     },
   });
+useEffect(() => {
+  console.log("Assessment Categories:", assessmentCategories);
 
+  if (
+    !assessmentCategoryId &&
+    assessmentCategories &&
+    assessmentCategories.length > 0
+  ) {
+    setAssessmentCategoryId(assessmentCategories[0].id);
+  }
+
+  if (
+    !uploadAssessmentCategoryId &&
+    assessmentCategories &&
+    assessmentCategories.length > 0
+  ) {
+    setUploadAssessmentCategoryId(assessmentCategories[0].id);
+  }
+}, [
+  assessmentCategories,
+  assessmentCategoryId,
+  uploadAssessmentCategoryId,
+]);
   const submit = useMutation({
     mutationFn: async () => {
       const num = Number(score);
       const { error } = await supabase.from("results").upsert(
-        {
-          student_id: studentId,
-          subject_id: subjectId,
-          term,
-          score: num,
-          grade: gradeFor(num),
-          remarks: remarks || null,
-          teacher_id: user?.id,
-        },
-        { onConflict: "student_id,subject_id,term" },
-      );
+  {
+    student_id: studentId,
+    subject_id: subjectId,
+    term,
+    assessment_category_id: assessmentCategoryId,
+    score: num,
+    grade: gradeFor(num),
+    remarks: remarks || null,
+    teacher_id: user?.id,
+  },
+  {
+    onConflict:
+      "student_id,subject_id,term,assessment_category_id",
+  },
+);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -150,10 +204,19 @@ function TeacherResultsPage() {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const num = Number(score);
-    if (!studentId || !subjectId || isNaN(num) || num < 0 || num > 100) {
-      toast.error("Pick student, subject, and a valid score (0-100)");
-      return;
-    }
+    if (
+  !studentId ||
+  !subjectId ||
+  !assessmentCategoryId ||
+  isNaN(num) ||
+  num < 0 ||
+  num > 100
+) {
+  toast.error(
+    "Pick student, subject, assessment category, and a valid score (0-100)"
+  );
+  return;
+}
     submit.mutate();
   };
 
@@ -346,6 +409,31 @@ function TeacherResultsPage() {
               </Select>
             </div>
             <div className="space-y-2">
+  <Label>Assessment Category</Label>
+  <Select
+    value={assessmentCategoryId}
+    onValueChange={setAssessmentCategoryId}
+  >
+    <SelectTrigger>
+      <SelectValue placeholder="Select assessment" />
+    </SelectTrigger>
+
+    <SelectContent>
+      {assessmentCategories?.map((category) => (
+        <SelectItem
+          key={category.id}
+          value={category.id}
+        >
+          {category.name}
+        </SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  <p className="text-xs text-red-500">
+  Categories loaded: {assessmentCategories?.length ?? 0}
+</p>
+</div>
+            <div className="space-y-2">
               <Label>Score (0-100)</Label>
               <Input
                 type="number"
@@ -452,29 +540,43 @@ function TeacherResultsPage() {
           <div className="rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Term</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Grade</TableHead>
-                  <TableHead>Remarks</TableHead>
-                </TableRow>
-              </TableHeader>
+  <TableRow>
+    <TableHead>Student</TableHead>
+    <TableHead>Subject</TableHead>
+    <TableHead>Term</TableHead>
+    <TableHead>Assessment</TableHead>
+    <TableHead>Score</TableHead>
+    <TableHead>Grade</TableHead>
+    <TableHead>Remarks</TableHead>
+  </TableRow>
+</TableHeader>
               <TableBody>
                 {results?.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.students?.full_name}</TableCell>
-                    <TableCell>{r.subjects?.name}</TableCell>
-                    <TableCell>{r.term}</TableCell>
-                    <TableCell>{r.score}</TableCell>
-                    <TableCell>{r.grade}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.remarks ?? "—"}</TableCell>
-                  </TableRow>
+                 <TableRow key={r.id}>
+  <TableCell className="font-medium">
+    {r.students?.full_name}
+  </TableCell>
+
+  <TableCell>{r.subjects?.name}</TableCell>
+
+  <TableCell>{r.term}</TableCell>
+
+  <TableCell>
+    {(r as any).assessment_categories?.name ?? "—"}
+  </TableCell>
+
+  <TableCell>{r.score}</TableCell>
+
+  <TableCell>{r.grade}</TableCell>
+
+  <TableCell className="text-muted-foreground">
+    {r.remarks ?? "—"}
+  </TableCell>
+</TableRow>
                 ))}
                 {results?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground">
                       No results yet
                     </TableCell>
                   </TableRow>
