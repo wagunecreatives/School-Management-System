@@ -153,26 +153,58 @@ return data ?? [];
     },
   });
 
-  const createInvoice = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("fee_invoices").insert({
+ const createInvoice = useMutation({
+  mutationFn: async () => {
+    // Create invoice first
+    const { data: invoice, error } = await supabase
+      .from("fee_invoices")
+      .insert({
         student_id: studentId,
         term,
         amount: totalAmount,
         due_date: dueDate || null,
         created_by: user?.id,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Invoice created");
-      setStudentId("");
-      setDueDate("");
-      qc.invalidateQueries({ queryKey: ["invoices"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
+        notes: notes || null,
+      })
+      .select()
+      .single();
 
+    if (error) throw error;
+
+    // Save breakdown items
+    const invoiceItems = items
+      .filter(
+        (item) =>
+          item.item_name.trim() !== "" &&
+          Number(item.amount) > 0
+      )
+      .map((item) => ({
+        invoice_id: invoice.id,
+        item_name: item.item_name,
+        amount: Number(item.amount),
+      }));
+
+    if (invoiceItems.length > 0) {
+      const { error: itemError } = await supabase
+        .from("invoice_items")
+        .insert(invoiceItems);
+
+      if (itemError) throw itemError;
+    }
+  },
+
+  onSuccess: () => {
+    toast.success("Invoice created");
+
+    setStudentId("");
+    setDueDate("");
+    setItems([{ item_name: "", amount: "" }]);
+
+    qc.invalidateQueries({ queryKey: ["invoices"] });
+  },
+
+  onError: (e: Error) => toast.error(e.message),
+});
   const recordPayment = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("fee_payments").insert({
@@ -329,23 +361,37 @@ return data ?? [];
         let invoiceId = existing?.id as string | undefined;
         let invoiceAmount = Number(existing?.amount ?? amt);
 
-        if (!invoiceId) {
-          const { data: created, error: ie } = await supabase
-            .from("fee_invoices")
-            .insert({
-              student_id: student.id,
-              term: rowTerm,
-              amount: amt || 0,
-              due_date: due,
-              notes: notes || null,
-              created_by: user?.id,
-            })
-            .select("id, amount")
-            .single();
-          if (ie) throw ie;
-          invoiceId = created!.id;
-          invoiceAmount = Number(created!.amount);
-          invoicesCreated++;
+       if (!invoiceId) {
+  const { data: created, error: ie } = await supabase
+    .from("fee_invoices")
+    .insert({
+      student_id: student.id,
+      term: rowTerm,
+      amount: amt || 0,
+      due_date: due,
+      notes: notes || null,
+      created_by: user?.id,
+    })
+    .select("id, amount")
+    .single();
+
+  if (ie) throw ie;
+
+  invoiceId = created!.id;
+  invoiceAmount = Number(created!.amount);
+
+  // ✅ Create invoice breakdown item (RIGHT HERE)
+  const { error: itemError } = await supabase
+    .from("invoice_items")
+    .insert({
+      invoice_id: invoiceId,
+      item_name: notes || "School Fees",
+      amount: amt || 0,
+    });
+
+  if (itemError) throw itemError;
+
+  invoicesCreated++;
         } else if (amt && Number(existing?.amount) !== amt) {
           await supabase.from("fee_invoices").update({ amount: amt }).eq("id", invoiceId);
           invoiceAmount = amt;
@@ -551,14 +597,12 @@ return data ?? [];
                                 className: i.students?.classes?.name ?? null,
                               },
                               term: i.term,
-                              items: [
-                                {
-                                  description: `School Fees — ${i.term}`,
-                                  period: i.term,
-                                  quantity: 1,
-                                  unitPrice: Number(i.amount),
-                                },
-                              ],
+                              items: i.invoice_items.map((item: any) => ({
+                           description: item.item_name,
+                           period: i.term,
+                          quantity: 1,
+                          unitPrice: Number(item.amount),
+                           })),
                               paid,
                             })
                           }

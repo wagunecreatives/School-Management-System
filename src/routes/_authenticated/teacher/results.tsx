@@ -37,12 +37,25 @@ export const Route = createFileRoute("/_authenticated/teacher/results")({
   component: TeacherResultsPage,
 });
 
-function gradeFor(score: number): string {
-  if (score >= 75) return "A";
-  if (score >= 65) return "B";
-  if (score >= 50) return "C";
-  if (score >= 40) return "D";
-  return "F";
+type RubricRule = {
+  label: string;
+  min: number;
+  max: number;
+};
+
+const RUBRIC: RubricRule[] = [
+  { label: "EE", min: 90, max: 100 },
+  { label: "EE", min: 75, max: 89 },
+  { label: "ME", min: 58, max: 74 },
+  { label: "ME", min: 41, max: 57 },
+  { label: "AE", min: 31, max: 40 },
+  { label: "AE", min: 21, max: 30 },
+  { label: "BE", min: 11, max: 20 },
+  { label: "BE", min: 1, max: 10 },
+];
+
+export function gradeFor(score: number): string {
+  return RUBRIC.find(r => score >= r.min && score <= r.max)?.label ?? "U";
 }
 
 const norm = (s: string) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
