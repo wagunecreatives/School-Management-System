@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { generateInvoicePdf } from "@/lib/pdf";
@@ -57,9 +59,17 @@ type InvoiceRow = {
   amount: number;
   due_date: string | null;
   status: string;
+  deleted_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
   student_id: string;
-  students: { full_name: string; class_id: string | null; classes: { name: string } | null } | null;
-  fee_payments: { amount: number }[];
+  students: {
+    full_name: string;
+    class_id: string | null;
+    classes: { name: string } | null;
+  } | null;
+  fee_payments: { amount: number; receipt_no: string | null }[];
+  invoice_items: { item_name: string; amount: number }[];
 };
 
 type PaymentRow = {
@@ -115,28 +125,31 @@ const totalAmount = useMemo(() => {
   });
 
   const { data: invoices } = useQuery({
-  queryKey: ["invoices"],
-  queryFn: async () => {
-    const { data, error } = await supabase
-      .from("fee_invoices")
-      .select(`
-        id,
-        term,
-        amount,
-        due_date,
-        status,
-        student_id,
-        notes,
-        students(full_name, class_id, classes(name)),
-        fee_payments(amount),
-        invoice_items(item_name, amount)
-      `)
-      .order("created_at", { ascending: false });
+    queryKey: ["invoices"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("fee_invoices")
+        .select(`
+          id,
+          term,
+          amount,
+          due_date,
+          status,
+          deleted_at,
+          cancelled_at,
+          cancel_reason,
+          student_id,
+          notes,
+          students(full_name, class_id, classes(name)),
+          fee_payments(amount, receipt_no),
+          invoice_items(item_name, amount)
+        `)
+        .order("created_at", { ascending: false });
 
-    if (error) throw error;
-return data ?? [];
-  },
-});
+      if (error) throw error;
+      return (data ?? []) as unknown as InvoiceRow[];
+    },
+  });
 
   const { data: payments } = useQuery({
     queryKey: ["payments"],
@@ -207,21 +220,53 @@ return data ?? [];
 });
   const recordPayment = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("fee_payments").insert({
-        invoice_id: payInvoiceId,
-        amount: Number(payAmount),
-        method,
-        receipt_no: receiptNo || null,
-        recorded_by: user?.id,
-      });
-      if (error) throw error;
-      const inv = invoices?.find((i) => i.id === payInvoiceId);
-      if (inv) {
-        const paid = inv.fee_payments.reduce((s, p) => s + Number(p.amount), 0) + Number(payAmount);
-        const newStatus = paid >= Number(inv.amount) ? "paid" : "partial";
-        await supabase.from("fee_invoices").update({ status: newStatus }).eq("id", payInvoiceId);
-      }
-    },
+  // 1. Insert payment
+  const { error: insertError } = await supabase
+    .from("fee_payments")
+    .insert({
+      invoice_id: payInvoiceId,
+      amount: Number(payAmount),
+      method,
+      receipt_no: receiptNo || null,
+      recorded_by: user?.id,
+    });
+
+  if (insertError) throw insertError;
+
+  // 2. Recalculate total paid from DB (source of truth)
+  const { data: payments, error: payError } = await supabase
+    .from("fee_payments")
+    .select("amount")
+    .eq("invoice_id", payInvoiceId);
+
+  if (payError) throw payError;
+
+  const totalPaid = payments?.reduce(
+    (sum, p) => sum + Number(p.amount),
+    0
+  ) || 0;
+
+  // 3. Get invoice amount from DB
+  const { data: invoice, error: invError } = await supabase
+    .from("fee_invoices")
+    .select("amount")
+    .eq("id", payInvoiceId)
+    .single();
+
+  if (invError) throw invError;
+
+  // 4. Determine status
+  const newStatus =
+    totalPaid >= Number(invoice.amount) ? "paid" : "partial";
+
+  // 5. Update invoice status
+  const { error: updateError } = await supabase
+    .from("fee_invoices")
+    .update({ status: newStatus })
+    .eq("id", payInvoiceId);
+
+  if (updateError) throw updateError;
+},
     onSuccess: () => {
   toast.success("Invoice created");
   setStudentId("");
@@ -235,23 +280,41 @@ return data ?? [];
 
   // Per-class analytics
   const classAnalytics = useMemo(() => {
-    if (!invoices) return [];
-    const map = new Map<string, { className: string; billed: number; collected: number }>();
-    for (const inv of invoices) {
-      const className = inv.students?.classes?.name ?? "Unassigned";
-      const key = className;
-      const paid = inv.fee_payments.reduce((s, p) => s + Number(p.amount), 0);
-      const cur = map.get(key) ?? { className, billed: 0, collected: 0 };
-      cur.billed += Number(inv.amount);
-      cur.collected += paid;
-      map.set(key, cur);
-    }
-    return Array.from(map.values()).map((c) => ({
-      ...c,
-      outstanding: Math.max(0, c.billed - c.collected),
-      rate: c.billed > 0 ? Math.round((c.collected / c.billed) * 100) : 0,
-    }));
-  }, [invoices]);
+  if (!invoices) return [];
+
+  const map = new Map<
+    string,
+    { className: string; billed: number; collected: number }
+  >();
+
+  for (const inv of invoices) {
+    const className = inv.students?.classes?.name ?? "Unassigned";
+
+    const payments = inv.fee_payments ?? []; // ✅ FIX HERE
+
+    const paid = payments.reduce(
+      (s, p) => s + Number(p.amount),
+      0
+    );
+
+    const cur = map.get(className) ?? {
+      className,
+      billed: 0,
+      collected: 0,
+    };
+
+    cur.billed += Number(inv.amount);
+    cur.collected += paid;
+
+    map.set(className, cur);
+  }
+
+  return Array.from(map.values()).map((c) => ({
+    ...c,
+    outstanding: Math.max(0, c.billed - c.collected),
+    rate: c.billed > 0 ? Math.round((c.collected / c.billed) * 100) : 0,
+  }));
+}, [invoices]);
 
   const totals = useMemo(() => {
     const billed = classAnalytics.reduce((s, c) => s + c.billed, 0);
@@ -285,6 +348,69 @@ return data ?? [];
     }
     recordPayment.mutate();
   };
+
+  const [invoiceActionId, setInvoiceActionId] = useState<string | null>(null);
+  const [cancelReasonDraft, setCancelReasonDraft] = useState<string>("");
+
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+
+  const anyReceiptIssuedForInvoice = (inv: InvoiceRow) => {
+    return (inv.fee_payments ?? []).some((p) => Boolean(p.receipt_no));
+  };
+
+  const deleteInvoice = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { error } = await supabase
+        .from("fee_invoices")
+        .update({ deleted_at: new Date().toISOString() } as any)
+        .eq("id", invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Invoice deleted");
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const cancelInvoice = useMutation({
+    mutationFn: async (args: { invoiceId: string; reason: string }) => {
+      const { error } = await supabase
+        .from("fee_invoices")
+        .update({
+          cancelled_at: new Date().toISOString(),
+          cancel_reason: args.reason,
+          status: "cancelled",
+        } as any)
+        .eq("id", args.invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Invoice cancelled");
+      setCancelReasonDraft("");
+      setInvoiceActionId(null);
+      setShowCancelDialog(false);
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const restoreInvoice = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const { error } = await supabase
+        .from("fee_invoices")
+        .update({
+          deleted_at: null,
+        } as any)
+        .eq("id", invoiceId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Invoice restored");
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const downloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
@@ -565,6 +691,7 @@ return data ?? [];
                   <TableHead>Balance</TableHead>
                   <TableHead>Due</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                   <TableHead className="text-right">Invoice</TableHead>
                 </TableRow>
               </TableHeader>
@@ -582,34 +709,80 @@ return data ?? [];
                       <TableCell>KSh{paid.toLocaleString()}</TableCell>
                       <TableCell>KSh{balance.toLocaleString()}</TableCell>
                       <TableCell>{i.due_date ?? "—"}</TableCell>
-                      <TableCell className="capitalize">{i.status}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            generateInvoicePdf({
-                              invoiceNo,
-                              issueDate: new Date().toISOString().slice(0, 10),
-                              dueDate: i.due_date,
-                              student: {
-                                fullName: i.students?.full_name ?? "Student",
-                                className: i.students?.classes?.name ?? null,
-                              },
-                              term: i.term,
-                              items: i.invoice_items.map((item: any) => ({
-                           description: item.item_name,
-                           period: i.term,
-                          quantity: 1,
-                          unitPrice: Number(item.amount),
-                           })),
-                              paid,
-                            })
-                          }
-                        >
-                          Download
-                        </Button>
+                      <TableCell>
+                        {i.deleted_at ? (
+                          <span className="text-red-600 font-medium">Deleted</span>
+                        ) : i.cancelled_at ? (
+                          <span className="text-orange-600 font-medium">Cancelled</span>
+                        ) : (
+                          <span className="text-green-600 font-medium">Active</span>
+                        )}
                       </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-col items-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              generateInvoicePdf({
+                                invoiceNo,
+                                issueDate: new Date().toISOString().slice(0, 10),
+                                dueDate: i.due_date,
+                                student: {
+                                  fullName: i.students?.full_name ?? "Student",
+                                  className: i.students?.classes?.name ?? null,
+                                },
+                                term: i.term,
+                                items: i.invoice_items.map((item: any) => ({
+                                  description: item.item_name,
+                                  period: i.term,
+                                  quantity: 1,
+                                  unitPrice: Number(item.amount),
+                                })),
+                                paid,
+                              })
+                            }
+                          >
+                            Download
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => deleteInvoice.mutate(i.id)}
+                          >
+                            Delete
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const reason = prompt("Cancellation reason");
+
+                              if (!reason) return;
+
+                              cancelInvoice.mutate({
+                                invoiceId: i.id,
+                                reason,
+                              });
+                            }}
+                          >
+                            Cancel
+                          </Button>
+
+                          {i.deleted_at && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => restoreInvoice.mutate(i.id)}
+                            >
+                              Restore
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+
                     </TableRow>
                   );
                 })}
