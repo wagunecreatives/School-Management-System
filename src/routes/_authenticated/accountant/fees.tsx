@@ -749,10 +749,25 @@ const totalAmount = useMemo(() => {
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => deleteInvoice.mutate(i.id)}
+                            onClick={() => {
+                              const hasReceipt =
+                                i.fee_payments?.some(
+                                  (p) =>
+                                    p.receipt_no &&
+                                    p.receipt_no.trim() !== "",
+                                ) ?? false;
+
+                              if (hasReceipt) {
+                                toast.error("Invoice has receipts. Use Cancel instead.");
+                                return;
+                              }
+
+                              deleteInvoice.mutate(i.id);
+                            }}
                           >
                             Delete
                           </Button>
+
 
                           <Button
                             size="sm"
