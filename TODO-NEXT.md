@@ -1,17 +1,11 @@
-# Next TODO (Term + Assessment Category)
+# TODO-NEXT
 
-- [ ] Create Supabase migration:
-  - assessment_categories table (name, sort_order, is_active)
-  - add assessment_category_id to results
-  - update results unique constraint: student_id + subject_id + term + assessment_category_id
-  - add RLS/select/insert policies for teacher
-- [ ] Update teacher results UI:
-  - fetch assessment_categories
-  - add Assessment Category dropdown
-  - update upsert payload + onConflict
-  - update recent results table
-  - update Excel template + parsing
-- [ ] Update parent student profile results table
-- [ ] Update PDF report generation and call site
-- [ ] Re-run `npm run build` after changes
+## Completed
+- N/A
+
+## Next
+1. Implement real Parent student assignments route at: src/routes/_authenticated/parent/students.$studentId.assignments.tsx
+2. Filter assignments by the studentId’s class_id(s) (using parent-owned student relationship) and show in a table like the existing parent/assignments page.
+3. Fix the TypeScript error `Argument of type 'string | null' is not assignable to parameter of type 'string'` by ensuring `studentId` and any URL/params passed to `Link` are always `string` (no null).
+4. Validate build/typecheck for no remaining TS errors.
 

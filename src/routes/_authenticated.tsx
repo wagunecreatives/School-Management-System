@@ -20,11 +20,15 @@ const NAV: Record<AppRole, { label: string; to: string }[]> = {
     { label: "Approve users", to: "/admin/users" },
     { label: "Students", to: "/admin/students" },
   ],
-  teacher: [{ label: "Results", to: "/teacher/results" }],
+  teacher: [
+    { label: "Results", to: "/teacher/results" },
+    { label: "Assignments", to: "/teacher/assignments" },
+  ],
   accountant: [{ label: "Fees", to: "/accountant/fees" }],
   parent: [
     { label: "Dashboard", to: "/parent/dashboard" },
     { label: "My children", to: "/parent/children" },
+    { label: "Assignments", to: "/parent/assignments" },
   ],
 };
 
