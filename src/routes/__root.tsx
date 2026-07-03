@@ -61,21 +61,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Santa Ana Calm Waters Academy" },
-      {
-        name: "description",
-        content:
-          "School Management System for Santa Ana Calm Waters Academy — students, fees, results.",
-      },
-      { property: "og:title", content: "Santa Ana Calm Waters Academy" },
-      { name: "twitter:title", content: "Santa Ana Calm Waters Academy" },
-      { name: "description", content: "A modern, secure school management platform that connects administrators, teachers, accountants, and parents in one system." },
-      { property: "og:description", content: "A modern, secure school management platform that connects administrators, teachers, accountants, and parents in one system." },
-      { name: "twitter:description", content: "A modern, secure school management platform that connects administrators, teachers, accountants, and parents in one system." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e11a39a3-0b35-4b1f-a497-aa248b23ce66/id-preview-3cf32dc2--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app-1781099105061.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/e11a39a3-0b35-4b1f-a497-aa248b23ce66/id-preview-3cf32dc2--f2dabbb8-33eb-4322-9432-e691fdfbc4f6.lovable.app-1781099105061.png" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { property: "og:type", content: "website" },
+      { name: "robots", content: "index,follow" },
     ],
     links: [{ rel: "stylesheet", href: appCss }],
   }),

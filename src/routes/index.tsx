@@ -3,9 +3,22 @@ import { useAuth, primaryRole, dashboardPathForRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import schoolLogo from "@/assets/school logo.png?url";
 
+import { makeCanonicalUrl } from "@/lib/seo";
+import { seoMeta } from "./seo";
+
+
 export const Route = createFileRoute("/")({
   component: Landing,
+  head: () =>
+    seoMeta({
+
+      title: "Santa Ana Calm Waters Academy — School Management System",
+      description:
+        "Calm waters for learning, fees, and results. One unified platform for admins, teachers, accountants, and parents.",
+      canonicalUrl: makeCanonicalUrl("/"),
+    }),
 });
+
 
 function Landing() {
   const { user, loading, profile, roles } = useAuth();

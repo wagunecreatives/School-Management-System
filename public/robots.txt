@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Disallow authentication + private app sections
+Disallow: /login
+Disallow: /register
+Disallow: /change-password
+Disallow: /pending
+Disallow: /accept-invite
+
+Disallow: /admin
+Disallow: /teacher
+Disallow: /accountant
+Disallow: /student
+Disallow: /parent
+Disallow: /settings
+Disallow: /_authenticated
+
+# Sitemap
+Sitemap: /sitemap.xml
+

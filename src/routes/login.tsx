@@ -7,10 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import schoolLogo from "@/assets/school logo.png?url";
+import { makeCanonicalUrl } from "@/lib/seo";
+import { seoMeta } from "./seo";
+
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
+  head: () =>
+    seoMeta({
+      title: "Sign in — Santa Ana Calm Waters Academy",
+      description:
+        "Sign in to manage students, fees, and results. Access your school account securely.",
+      canonicalUrl: makeCanonicalUrl("/login"),
+    }),
 });
+
 
 function LoginPage() {
   const navigate = useNavigate();

@@ -7,10 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "./login";
+import { makeCanonicalUrl } from "@/lib/seo";
+import { seoMeta } from "./seo";
+
 
 export const Route = createFileRoute("/register")({
   component: RegisterPage,
+  head: () =>
+    seoMeta({
+      title: "Register — Santa Ana Calm Waters Academy",
+      description:
+        "Create your account for Santa Ana Calm Waters Academy. Your access will be approved by the school admin.",
+      canonicalUrl: makeCanonicalUrl("/register"),
+    }),
 });
+
 
 function RegisterPage() {
   const navigate = useNavigate();

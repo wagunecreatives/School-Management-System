@@ -151,6 +151,250 @@ export function generateResultReportPdf(input: ResultReportInput) {
   doc.save(`result-${input.studentName.replace(/\s+/g, "_")}.pdf`);
 }
 
+export type GradeRule = { label: string; min: number; max: number };
+
+export type ResultsSheetInput = {
+  className: string;
+  subjectName: string;
+  term: string;
+  assessmentCategoryName: string;
+  generatedAt: string | Date;
+  teacherName?: string | null;
+
+  gradingRules: GradeRule[];
+  // teacher remarks should correspond to each student's score/grade
+  students: Array<{
+    admissionNo: string | null;
+    fullName: string;
+    score?: number | null;
+    remarks?: string | null;
+  }>;
+};
+
+function gradeFor(score: number, rules: GradeRule[]): string {
+  const s = Number(score);
+  if (!Number.isFinite(s)) return "U";
+  return rules.find((r) => s >= r.min && s <= r.max)?.label ?? "U";
+}
+
+
+
+export function safeLabelOrder(rules: GradeRule[]): string[] {
+
+  // preserve DB-config order, then add fallback labels used by current implementation
+  const fromRules = rules.map((r) => r.label);
+  const seen = new Set<string>();
+  const ordered = [] as string[];
+  for (const l of fromRules) {
+    if (seen.has(l)) continue;
+    seen.add(l);
+    ordered.push(l);
+  }
+  if (!seen.has("U")) ordered.push("U");
+  return ordered;
+}
+
+
+
+function mean(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  return nums.reduce((a, b) => a + b, 0) / nums.length;
+}
+
+function formatOptionalNumber(n: number | null | undefined, digits = 0) {
+  if (n === null || n === undefined) return "—";
+  if (!Number.isFinite(n)) return "—";
+  if (digits === 0) return String(Math.round(n));
+  return n.toFixed(digits);
+}
+
+export function generateResultsSheetPdf(input: ResultsSheetInput) {
+  const doc = new jsPDF();
+
+  const genAt =
+    typeof input.generatedAt === "string"
+      ? new Date(input.generatedAt)
+      : input.generatedAt ?? new Date();
+
+  const headerMeta = [
+    input.className,
+    `${input.subjectName} • ${input.term}`,
+    input.assessmentCategoryName,
+  ].filter(Boolean);
+
+  header(doc, `Results Sheet`, headerMeta.join(" • "));
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
+  let y = 34;
+  doc.setTextColor(0);
+  doc.text(`Assessment Category: ${input.assessmentCategoryName}`, 14, y);
+  doc.text(`Generated: ${genAt.toLocaleString()}`, pageW - 14, y, {
+    align: "right",
+  });
+  y += 6;
+  doc.text(`Class: ${input.className}`, 14, y);
+  y += 5;
+  doc.text(`Subject: ${input.subjectName}`, 14, y);
+  y += 5;
+  doc.text(`Term: ${input.term}`, 14, y);
+  y += 7;
+
+  // Compute summary + grade distribution dynamically based on scores
+  const totalStudents = input.students.length;
+  const scoredStudents = input.students.filter((s) => s.score !== undefined && s.score !== null).length;
+  const scores = input.students
+    .map((s) => (s.score === undefined || s.score === null ? null : Number(s.score)))
+    .filter((v): v is number => v !== null && Number.isFinite(v));
+
+  const highestScore = scores.length ? Math.max(...scores) : null;
+  const lowestScore = scores.length ? Math.min(...scores) : null;
+  const avg = scores.length ? mean(scores) : null;
+  const totalMarks = scores.length ? scores.reduce((a, b) => a + b, 0) : null;
+  const percentageAvg = avg !== null ? (avg as number).toFixed(1) + "%" : "—";
+
+
+  const gradeCounts = new Map<string, number>();
+  for (const s of input.students) {
+    if (s.score === undefined || s.score === null || !Number.isFinite(Number(s.score))) continue;
+    const g = gradeFor(Number(s.score), input.gradingRules);
+    gradeCounts.set(g, (gradeCounts.get(g) ?? 0) + 1);
+  }
+
+
+
+  // Student table (multi-page with repeated header)
+  autoTable(doc, {
+    startY: y,
+    head: [["Admission No", "Student Name", "Score", "Grade", "Remarks"]],
+    body: input.students.map((s) => {
+      const scoreVal = s.score === undefined || s.score === null ? null : Number(s.score);
+      const grade = scoreVal === null ? "—" : gradeFor(scoreVal, input.gradingRules);
+      const scoreStr = scoreVal === null ? "" : String(scoreVal);
+      return [
+        s.admissionNo ?? "—",
+        s.fullName,
+        scoreStr,
+        grade,
+        s.remarks ?? "",
+      ];
+    }),
+    styles: { fontSize: 9, cellPadding: 2, overflow: "linebreak" as any },
+    headStyles: { fillColor: [30, 41, 59] },
+    columnStyles: {
+      0: { cellWidth: 22 },
+      1: { cellWidth: 62 },
+      2: { cellWidth: 18, halign: "center" },
+      3: { cellWidth: 16, halign: "center" },
+      4: { cellWidth: 38 },
+    },
+  });
+
+
+  const lastY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+
+  let summaryY = Math.max(lastY + 8, 80);
+  const minFooterY = pageH - 46;
+
+  // Summary section
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Class Performance Summary", 14, summaryY);
+  summaryY += 6;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  const summaryLines = [
+    `Total number of students: ${totalStudents}`,
+    `Number of students assessed: ${scoredStudents}`,
+    `Highest score: ${highestScore === null ? "—" : highestScore}`,
+    `Lowest score: ${lowestScore === null ? "—" : lowestScore}`,
+    `Class average (Mean): ${avg === null ? "—" : (avg as number).toFixed(1)}`,
+    `Total marks obtained: ${totalMarks === null ? "—" : totalMarks}`,
+    `Percentage average: ${scoredStudents ? percentageAvg : "—"}`,
+  ];
+
+for (const line of summaryLines) {
+    if (summaryY > minFooterY - 35) break;
+    doc.text(line, 14, summaryY);
+    summaryY += 5;
+  }
+
+  // Grade distribution
+  if (summaryY < minFooterY) {
+    summaryY += 4;
+    doc.setFont("helvetica", "bold");
+    doc.text("Grade Distribution", 14, summaryY);
+    summaryY += 6;
+    doc.setFont("helvetica", "normal");
+
+    // Generate grade ordering dynamically from grading rules
+    const order = safeLabelOrder(input.gradingRules);
+    const items = order
+      .filter((g) => gradeCounts.get(g) !== undefined)
+      .map((g) => ({ grade: g, count: gradeCounts.get(g) ?? 0 }));
+
+
+    if (items.length === 0) {
+      doc.text("No assessed scores yet.", 14, summaryY);
+      summaryY += 5;
+    } else {
+      for (const it of items) {
+        doc.text(`${it.grade} : ${it.count} ${it.count === 1 ? "Student" : "Students"}`.replace("Students", "Students").replace("Student", "Student"), 14, summaryY);
+        summaryY += 5;
+      }
+    }
+  }
+
+  // Footer + teacher signature block (supports multi-page roughly by placing at end)
+  const lastFooterY = Math.max(summaryY + 8, pageH - 42);
+
+  // Signature line
+  const signLineY = Math.min(lastFooterY, pageH - 24);
+  doc.setDrawColor(220);
+  doc.line(14, signLineY, pageW - 14, signLineY);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("Teacher's Signature", 14, signLineY + 7);
+
+  const teacherName = input.teacherName ?? "—";
+  doc.setFont("helvetica", "normal");
+  doc.text(`Teacher: ${teacherName}`, pageW - 14, signLineY + 7, { align: "right" });
+
+  // Date Printed + page number if needed
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`Date Printed: ${genAt.toLocaleDateString()}`, 14, pageH - 16);
+  // Page number: jsPDF typing varies across versions; keep it simple.
+  doc.text(`Page ${String((doc as any).getCurrentPageNumber?.() ?? 1)}`, pageW - 14, pageH - 16, {
+    align: "right",
+  });
+
+  doc.setTextColor(0);
+
+  // General requirements (small, single-line)
+  doc.setFontSize(8);
+  doc.setTextColor(110);
+  doc.text(
+    "Official record for class, term, subject & assessment category.",
+    14,
+    pageH - 10,
+  );
+
+  doc.save(
+    `results-sheet-${input.className}-${input.subjectName}-${input.assessmentCategoryName}-${String(genAt.getTime())}`
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9\-_.]/g, "") + ".pdf",
+  );
+}
+
+
 export type ReceiptInput = {
   receiptNo: string;
   studentName: string;

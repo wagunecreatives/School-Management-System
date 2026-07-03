@@ -57,36 +57,26 @@ function ParentAssignmentsPage() {
     },
   });
 
+  const classIds = (children ?? [])
+    .map((c) => c.class_id)
+    .filter(Boolean) as string[];
+
   const { data: assignments, isLoading: loadingAssignments } = useQuery({
-    queryKey: ["parent-assignments", user?.id, children?.length],
-    enabled: !!user && (children?.length ?? 0) > 0,
+    queryKey: ["parent-assignments", user?.id, classIds],
+    enabled: !!user && classIds.length > 0,
     queryFn: async () => {
-      const classIds = (children ?? [])
-        .map((c) => c.class_id)
-        .filter(Boolean) as string[];
-
-      console.log("[parent/assignments] children:", children);
-      console.log("[parent/assignments] classIds:", classIds);
-
-
-      const { data, error } = await supabase
+      // Teacher inserts: status = "active"
+      const { data: assignmentsData, error } = await supabase
         .from("assignments")
         .select(
-          "id,title,instructions,due_date,marks,attachment_url,status,created_at,class_id,classes(name)"
+          "id,title,instructions,due_date,marks,attachment_url,status,created_at,class_id"
         )
         .in("class_id", classIds)
-        .order("created_at", { ascending: false })
-        .limit(50);
-
-
+        .ilike("status", "active")
+        .order("created_at", { ascending: false });
       if (error) throw error;
 
-      console.log("[parent/assignments] assignments data:", data);
-
-      return data as Array<
-        AssignmentRow & { classes?: { name: string } | null }
-      >;
-
+      return (assignmentsData ?? []) as AssignmentRow[];
     },
   });
 
@@ -159,9 +149,6 @@ function ParentAssignmentsPage() {
                         <TableRow key={a.id}>
                           <TableCell className="font-medium">
                             {a.title}
-                            <div className="text-xs text-muted-foreground">
-                              {a['classes']?.name ? `Class: ${a['classes']?.name}` : ""}
-                            </div>
                           </TableCell>
                           <TableCell>{due}</TableCell>
                           <TableCell className="text-right">
@@ -182,15 +169,24 @@ function ParentAssignmentsPage() {
                               "—"
                             )}
                             <div className="mt-1 text-xs">
-                              <Link
-                                to="/parent/students/$studentId/assignments"
-                                params={{
-                                  studentId: children?.[0]?.id ?? "",
-                                }}
-                                className="text-muted-foreground hover:text-foreground underline"
-                              >
-                                View details
-                              </Link>
+                              {(() => {
+                                const matchingChild = (children ?? []).find(
+                                  (c) => c.class_id === a.class_id,
+                                );
+
+                                // Only show details link when we can reliably pick the correct student.
+                                if (!matchingChild) return <span className="text-muted-foreground">—</span>;
+
+                                return (
+                                  <Link
+                                    to="/parent/students/$studentId/assignments"
+                                    params={{ studentId: matchingChild.id }}
+                                    className="text-muted-foreground hover:text-foreground underline"
+                                  >
+                                    View details
+                                  </Link>
+                                );
+                              })()}
                             </div>
                           </TableCell>
                         </TableRow>
